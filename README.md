@@ -1,13 +1,14 @@
 ## RETFound - A foundation model for retinal imaging
 
 
-Official repo including a series of retinal foundation models.<br>
-[RETFound: a foundation model for generalizable disease detection from retinal images](https://www.nature.com/articles/s41586-023-06555-x), which is based on [MAE](https://github.com/facebookresearch/mae).<br>
-[New checkpoints](https://huggingface.co/YukunZhou), some of which are based on [DINOV2](https://github.com/facebookresearch/dinov2):
+Official repo including a series of foundation models and applications in retinal imaging.<br>
+`[RETFound-MAE]`:[RETFound: a foundation model for generalizable disease detection from retinal images](https://www.nature.com/articles/s41586-023-06555-x).<br>
+`[RETFound-DINOv2]`:[Revealing the Impact of Pre-training Data on Medical Foundation Models](https://www.researchsquare.com/article/rs-6080254/v1).<br>
+`[DINOv2]`:[General-purpose vision foundation models DINOv2](https://github.com/facebookresearch/dinov2).<br>
+`[DINOv3]`:[General-purpose vision foundation models DINOv3](https://github.com/facebookresearch/dinov3).<br>
+
 
 Please contact 	**ykzhoua@gmail.com** or **yukun.zhou.19@ucl.ac.uk** if you have questions.
-
-Keras version implemented by Yuka Kihara can be found [here](https://github.com/uw-biomedical-ml/RETFound_MAE)
 
 
 ### 📝Key features
@@ -19,13 +20,14 @@ Keras version implemented by Yuka Kihara can be found [here](https://github.com/
 
 ### 🎉News
 
+- 🐉2025/09: **Benchmarking paper for DINOv3, DINOv2, and RETFound will come soon!**
+- 🐉2025/09: **We included state-of-the-art DINOv3 into fine-tuning pipeline for retinal applications!**
 - 🐉2025/02: **We organised the model weights on HuggingFace, no more manual downloads needed!**
 - 🐉2025/02: **Multiple [pre-trained weights](https://huggingface.co/YukunZhou), including MAE-based and DINOV2-based, are added!**
 - 🐉2025/02: **We update the version of packages, such as CUDA12+ and PyTorch 2.3+!**
 - 🐉2024/01: [Feature vector notebook](https://github.com/rmaphoh/RETFound_MAE/blob/main/latent_feature.ipynb) are now online!
 - 🐉2024/01: [Data split and model checkpoints](BENCHMARK.md) for public datasets are now online!
 - 🎄2023/12: [Colab notebook](https://colab.research.google.com/drive/1_X19zdMegmAlqPAEY0Ao659fzzzlx2IZ?usp=sharing) is now online - free GPU & simple operation!
-- 2023/10: change the hyperparameter of [input_size](https://github.com/rmaphoh/RETFound_MAE#:~:text=finetune%20./RETFound_cfp_weights.pth%20%5C-,%2D%2Dinput_size%20224,-For%20evaluation%20only) for any image size
 
 
 ### 🔧Install environment
@@ -40,9 +42,9 @@ conda activate retfound
 2. Install dependencies
 
 ```
-conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
-git clone https://github.com/rmaphoh/RETFound_MAE/
-cd RETFound_MAE
+pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+git clone https://github.com/rmaphoh/RETFound/
+cd RETFound
 pip install -r requirements.txt
 ```
 
@@ -71,22 +73,22 @@ To fine tune RETFound on your own data, follow these steps:
 <!-- TABLE BODY -->
 <tr><td align="left">RETFound_mae_meh</td>
 <td align="center"><a href="https://huggingface.co/YukunZhou/RETFound_mae_meh">access</a></td>
-<td align="center">TBD</a></td>
+<td align="center"><a href="https://www.researchsquare.com/article/rs-6080254/v1">FM data paper</a></td>
 </tr>
 <!-- TABLE BODY -->
 <tr><td align="left">RETFound_mae_shanghai</td>
 <td align="center"><a href="https://huggingface.co/YukunZhou/RETFound_mae_shanghai">access</a></td>
-<td align="center">TBD</a></td>
+<td align="center"><a href="https://www.researchsquare.com/article/rs-6080254/v1">FM data paper</a></td>
 </tr>
 <!-- TABLE BODY -->
 <tr><td align="left">RETFound_dinov2_meh</td>
 <td align="center"><a href="https://huggingface.co/YukunZhou/RETFound_dinov2_meh">access</a></td>
-<td align="center">TBD</a></td>
+<td align="center"><a href="https://www.researchsquare.com/article/rs-6080254/v1">FM data paper</a></td>
 </tr>
 <!-- TABLE BODY -->
 <tr><td align="left">RETFound_dinov2_shanghai</td>
 <td align="center"><a href="https://huggingface.co/YukunZhou/RETFound_dinov2_shanghai">access</a></td>
-<td align="center">TBD</a></td>
+<td align="center"><a href="https://www.researchsquare.com/article/rs-6080254/v1">FM data paper</a></td>
 </tr>
 </tbody></table>
 
@@ -118,56 +120,116 @@ export HF_ENDPOINT=https://hf-mirror.com
         ├──class_c
 ``` 
 
-4. Start fine-tuning (use IDRiD as example). A fine-tuned checkpoint will be saved during training. Evaluation will be automatically run after training.
+4. If you would like to use DINOv2 and DINOv3, please visit their GitHub repositories to download the model weights and put them in the RETFound folder.
 
-The model and finetune can be selected:
+4. Start fine-tuning by running `sh train.sh`.
 
-| model           | finetune                 |
-|-----------------|--------------------------|
-| RETFound_mae    | RETFound_mae_natureCFP   |
-| RETFound_mae    | RETFound_mae_natureOCT   |
-| RETFound_mae    | RETFound_mae_meh         |
-| RETFound_mae    | RETFound_mae_shanghai    |
-| RETFound_dinov2 | RETFound_dinov2_meh      |
-| RETFound_dinov2 | RETFound_dinov2_shanghai |
+
+The model can be selected by changing the hyperparameters `MODEL`, `MODEL_ARCH`, `FINETUNE` in `train.sh`:
+
+**RETFound**:
+
+| MODEL           | MODEL_ARCH               | FINETUNE                 | SIZE                     |
+|-----------------|--------------------------|--------------------------|--------------------------|
+| RETFound_mae    | retfound_mae             | RETFound_mae_natureCFP   | ~300M                    |
+| RETFound_mae    | retfound_mae             | RETFound_mae_natureOCT   | ~300M                    |
+| RETFound_mae    | retfound_mae             | RETFound_mae_meh         | ~300M                    |
+| RETFound_mae    | retfound_mae             | RETFound_mae_shanghai    | ~300M                    |
+| RETFound_dinov2 | retfound_dinov2          | RETFound_dinov2_meh      | ~300M                    |
+| RETFound_dinov2 | retfound_dinov2          | RETFound_dinov2_shanghai | ~300M                    |
+
+
+**DINOv3**:
+
+| MODEL           | MODEL_ARCH               | FINETUNE                         | SIZE                     |
+|-----------------|--------------------------|----------------------------------|--------------------------|
+| Dinov3          | dinov3_vits16            | dinov3_vits16_pretrain.pth       | ~21M                     |
+| Dinov3          | dinov3_vits16plus        | dinov3_vits16plus_pretrain.pth   | ~29M                     |
+| Dinov3          | dinov3_vitb16            | dinov3_vitb16_pretrain.pth       | ~86M                     |
+| Dinov3          | dinov3_vitl16            | dinov3_vitl16_pretrain.pth       | ~300M                    |
+| Dinov3          | dinov3_vith16plus        | dinov3_vith16plus_pretrain.pth   | ~840M                    |
+| Dinov3          | dinov3_vit7b16           | dinov3_vit7b16_pretrain.pth      | ~6.7B                    |
+
+
+**DINOv2**:
+
+| MODEL           | MODEL_ARCH               | FINETUNE                     | SIZE                     |
+|-----------------|--------------------------|------------------------------|--------------------------|
+| Dinov2          | dinov2_vits14            | dinov2_vits14_pretrain.pth   | ~21M                     |
+| Dinov2          | dinov2_vitb14            | dinov2_vitb14_pretrain.pth   | ~86M                     |
+| Dinov2          | dinov2_vitl14            | dinov2_vitl14_pretrain.pth   | ~300M                    |
+| Dinov2          | dinov2_vitg14            | dinov2_vitg14_pretrain.pth   | ~1.1B                    |
+
 
 ```
-torchrun --nproc_per_node=1 --master_port=48798 main_finetune.py \
-    --model RETFound_mae \
-    --savemodel \
-    --global_pool \
-    --batch_size 16 \
-    --world_size 1 \
-    --epochs 100 \
-    --blr 5e-3 --layer_decay 0.65 \
-    --weight_decay 0.05 --drop_path 0.2 \
-    --nb_classes 5 \
-    --data_path ./IDRiD \
-    --input_size 224 \
-    --task RETFound_mae_meh-IDRiD \
-    --finetune RETFound_mae_meh
+# ==== Model settings ====
+# adaptation {finetune,lp}
+ADAPTATION="finetune"
+MODEL="RETFound_dinov2"
+MODEL_ARCH="retfound_dinov2"
+FINETUNE="RETFound_dinov2_meh"
+
+# ==== Data settings ====
+# change the dataset name and corresponding class number
+DATASET="MESSIDOR2"
+NUM_CLASS=5
+data_path="./${DATASET}"
+task="${MODEL_ARCH}_${DATASET}_${ADAPTATION}"
+
+torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
+  --model "${MODEL}" \
+  --model_arch "${MODEL_ARCH}" \
+  --finetune "${FINETUNE}" \
+  --savemodel \
+  --global_pool \
+  --batch_size 24 \
+  --world_size 1 \
+  --epochs 50 \
+  --nb_classes "${NUM_CLASS}" \
+  --data_path "${data_path}" \
+  --input_size 224 \
+  --task "${task}" \
+  --adaptation "${ADAPTATION}" 
+
 ```
+
 
 
 4. For evaluation only (download data and model checkpoints [here](BENCHMARK.md); change the path below)
 
 
 ```
-torchrun --nproc_per_node=1 --master_port=48798 main_finetune.py \
-    --model RETFound_mae \
-    --savemodel \
-    --eval \
-    --global_pool \
-    --batch_size 16 \
-    --world_size 1 \
-    --epochs 100 \
-    --blr 5e-3 --layer_decay 0.65 \
-    --weight_decay 0.05 --drop_path 0.2 \
-    --nb_classes 5 \
-    --data_path ./IDRiD \
-    --input_size 224 \
-    --task RETFound_mae_meh-IDRiD \
-    --resume ./RETFound_mae_meh-IDRiD/checkpoint-best.pth
+# ==== Model/settings (match training) ====
+ADAPTATION="finetune"
+MODEL="RETFound_dinov2"
+MODEL_ARCH="retfound_dinov2"
+FINETUNE="RETFound_dinov2_meh"
+
+# ==== Data/settings (match training) ====
+DATASET="MESSIDOR2"
+NUM_CLASS=5
+DATA_PATH="./${DATASET}"
+TASK="${MODEL_ARCH}_${DATASET}_${ADAPTATION}"
+
+# Path to the trained checkpoint (adjust if you saved elsewhere)
+CKPT="./output_dir/${TASK}/checkpoint-best.pth"
+
+# ==== Evaluation only ====
+torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
+  --model "${MODEL}" \
+  --model_arch "${MODEL_ARCH}" \
+  --savemodel \
+  --global_pool \
+  --batch_size 128 \
+  --world_size 1 \
+  --nb_classes "${NUM_CLASS}" \
+  --data_path "${DATA_PATH}" \
+  --input_size 224 \
+  --task "${TASK}" \
+  --adaptation "${ADAPTATION}" \
+  --eval \
+  --resume "${CKPT}"
+
 ```
 
 
