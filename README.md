@@ -100,7 +100,7 @@ huggingface-cli login --token YOUR_HUGGINGFACE_TOKEN
 export HF_ENDPOINT=https://hf-mirror.com
 ```
 
-3. If you would like to fine-tune [DINOv2]((https://github.com/facebookresearch/dinov2)) and [DINOv3](https://github.com/facebookresearch/dinov3), please visit their GitHub repositories to download the model weights and put them in the RETFound folder.
+3. If you would like to fine-tune [DINOv2](https://github.com/facebookresearch/dinov2) and [DINOv3](https://github.com/facebookresearch/dinov3), please visit their GitHub repositories to download the model weights and put them in the RETFound folder.
 
 4. Organise your data into this directory structure (Public datasets used in this study can be [downloaded here](BENCHMARK.md))
 
