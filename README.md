@@ -1,11 +1,11 @@
-## RETFound - A foundation model for retinal imaging
+## RETFound - A foundation model for retinal images
 
 
-Official repo including a series of foundation models and applications in retinal imaging.<br>
+Official repo including a series of foundation models and applications for retinal images.<br>
 `[RETFound-MAE]`:[RETFound: a foundation model for generalizable disease detection from retinal images](https://www.nature.com/articles/s41586-023-06555-x).<br>
 `[RETFound-DINOv2]`:[Revealing the Impact of Pre-training Data on Medical Foundation Models](https://www.researchsquare.com/article/rs-6080254/v1).<br>
-`[DINOv2]`:[General-purpose vision foundation models DINOv2](https://github.com/facebookresearch/dinov2).<br>
-`[DINOv3]`:[General-purpose vision foundation models DINOv3](https://github.com/facebookresearch/dinov3).<br>
+`[DINOv2]`:[General-purpose vision foundation models DINOv2 by Meta](https://github.com/facebookresearch/dinov2).<br>
+`[DINOv3]`:[General-purpose vision foundation models DINOv3 by Meta](https://github.com/facebookresearch/dinov3).<br>
 
 
 Please contact 	**ykzhoua@gmail.com** or **yukun.zhou.19@ucl.ac.uk** if you have questions.
@@ -50,8 +50,6 @@ pip install -r requirements.txt
 
 
 ### 🌱Fine-tuning with RETFound weights
-
-To fine tune RETFound on your own data, follow these steps:
 
 1. Get access to the pre-trained models on HuggingFace (register an account and fill in the form) and go to step 2:
 <table><tbody>
@@ -102,7 +100,9 @@ huggingface-cli login --token YOUR_HUGGINGFACE_TOKEN
 export HF_ENDPOINT=https://hf-mirror.com
 ```
 
-3. Organise your data into this directory structure (Public datasets used in this study can be [downloaded here](BENCHMARK.md))
+3. If you would like to fine-tune [DINOv2]((https://github.com/facebookresearch/dinov2)) and [DINOv3](https://github.com/facebookresearch/dinov3), please visit their GitHub repositories to download the model weights and put them in the RETFound folder.
+
+4. Organise your data into this directory structure (Public datasets used in this study can be [downloaded here](BENCHMARK.md))
 
 ```
 ├── data folder
@@ -120,12 +120,12 @@ export HF_ENDPOINT=https://hf-mirror.com
         ├──class_c
 ``` 
 
-4. If you would like to use DINOv2 and DINOv3, please visit their GitHub repositories to download the model weights and put them in the RETFound folder.
-
-4. Start fine-tuning by running `sh train.sh`.
 
 
-The model can be selected by changing the hyperparameters `MODEL`, `MODEL_ARCH`, `FINETUNE` in `train.sh`:
+5. Start fine-tuning by running `sh train.sh`.
+
+
+In `train.sh`, the model can be selected by changing the hyperparameters `MODEL`, `MODEL_ARCH`, `FINETUNE`:
 
 **RETFound**:
 
@@ -161,6 +161,8 @@ The model can be selected by changing the hyperparameters `MODEL`, `MODEL_ARCH`,
 | Dinov2          | dinov2_vitg14            | dinov2_vitg14_pretrain.pth   | ~1.1B                    |
 
 
+Change the DATA_PATH to your dataset directory.
+
 ```
 # ==== Model settings ====
 # adaptation {finetune,lp}
@@ -173,8 +175,10 @@ FINETUNE="RETFound_dinov2_meh"
 # change the dataset name and corresponding class number
 DATASET="MESSIDOR2"
 NUM_CLASS=5
-data_path="./${DATASET}"
-task="${MODEL_ARCH}_${DATASET}_${ADAPTATION}"
+
+# =======================
+DATA_PATH="PATH TO THE DATASET"
+TASK="${MODEL_ARCH}_${DATASET}_${ADAPTATION}"
 
 torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
   --model "${MODEL}" \
@@ -186,16 +190,16 @@ torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
   --world_size 1 \
   --epochs 50 \
   --nb_classes "${NUM_CLASS}" \
-  --data_path "${data_path}" \
+  --data_path "${DATA_PATH}" \
   --input_size 224 \
-  --task "${task}" \
+  --task "${TASK}" \
   --adaptation "${ADAPTATION}" 
 
 ```
 
 
 
-4. For evaluation only (download data and model checkpoints [here](BENCHMARK.md); change the path below)
+6. For evaluation only (download data and model checkpoints [here](BENCHMARK.md); change the DATA_PATH below)
 
 
 ```
@@ -208,7 +212,9 @@ FINETUNE="RETFound_dinov2_meh"
 # ==== Data/settings (match training) ====
 DATASET="MESSIDOR2"
 NUM_CLASS=5
-DATA_PATH="./${DATASET}"
+
+# =======================
+DATA_PATH="PATH TO THE DATASET"
 TASK="${MODEL_ARCH}_${DATASET}_${ADAPTATION}"
 
 # Path to the trained checkpoint (adjust if you saved elsewhere)
@@ -236,10 +242,6 @@ torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
 ### 📃Citation
 
 If you find this repository useful, please consider citing this paper:
-
-```
-TBD
-```
 
 ```
 @article{zhou2023foundation,
