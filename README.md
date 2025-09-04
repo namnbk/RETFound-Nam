@@ -20,7 +20,7 @@ Please contact 	**ykzhoua@gmail.com** or **yukun.zhou.19@ucl.ac.uk** if you have
 
 ### 🎉News
 
-- 🐉2025/09: **Benchmarking paper for DINOv3, DINOv2, and RETFound will come soon!**
+- 🐉2025/09: **Preprint benchmarking DINOv3, DINOv2, and RETFound is [available](https://arxiv.org/abs/2509.03421)!**
 - 🐉2025/09: **We included state-of-the-art DINOv3 into fine-tuning pipeline for retinal applications!**
 - 🐉2025/02: **We organised the model weights on HuggingFace, no more manual downloads needed!**
 - 🐉2025/02: **Multiple [pre-trained weights](https://huggingface.co/YukunZhou), including MAE-based and DINOV2-based, are added!**
@@ -243,6 +243,7 @@ torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
 
 If you find this repository useful, please consider citing this paper:
 
+
 ```
 @article{zhou2023foundation,
   title={A foundation model for generalizable disease detection from retinal images},
@@ -256,4 +257,14 @@ If you find this repository useful, please consider citing this paper:
 }
 ```
 
-
+```
+@misc{zhou2025generalistversusspecialistvision,
+      title={Generalist versus Specialist Vision Foundation Models for Ocular Disease and Oculomics}, 
+      author={Yukun Zhou and Paul Nderitu and Jocelyn Hui Lin Goh and Justin Engelmann and Siegfried K. Wagner and Anran Ran and Hongyang Jiang and Lie Ju and Ke Zou and Sahana Srinivasan and Hyunmin Kim and Takahiro Ninomiya and Zheyuan Wang and Gabriel Dawei Yang and Eden Ruffell and Dominic Williamson and Rui Santos and Gabor Mark Somfai and Carol Y. Cheung and Tien Yin Wong and Daniel C. Alexander and Yih Chung Tham and Pearse A. Keane},
+      year={2025},
+      eprint={2509.03421},
+      archivePrefix={arXiv},
+      primaryClass={eess.IV},
+      url={https://arxiv.org/abs/2509.03421}, 
+}
+```
