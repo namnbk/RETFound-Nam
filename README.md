@@ -239,6 +239,27 @@ torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
 ```
 
 
+### ⚡ Inference latency benchmark (single image)
+
+To measure single-image inference latency using your fine-tuned checkpoint:
+
+```
+# Example (Windows single GPU)
+python -u main_finetune.py \
+  --model RETFound_dinov2 \
+  --model_arch retfound_dinov2 \
+  --nb_classes 7 \
+  --data_path ./octdl \
+  --input_size 224 \
+  --task retfound_dinov2_octdl_finetune \
+  --eval \
+  --resume ./output_dir/retfound_dinov2_octdl_finetune/checkpoint-best.pth \
+  --bench --bench_warmup 20 --bench_iters 100
+```
+
+This runs batch_size=1 over the test set with warmup, synchronizes CUDA, and prints average, p50, p95 latency and throughput.
+
+
 ### 📃Citation
 
 If you find this repository useful, please consider citing this paper:

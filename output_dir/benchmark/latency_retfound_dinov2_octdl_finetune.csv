@@ -1,0 +1,2 @@
+timestamp,model,model_arch,task,nb_classes,input_size,device,warmup,iters,avg_ms,p50_ms,p95_ms,throughput_img_s
+2025-09-16 04:44:38,RETFound_dinov2,retfound_dinov2,retfound_dinov2_octdl_finetune,7,224,cuda,20,100,18.9367,19.1335,22.9593,52.8075
