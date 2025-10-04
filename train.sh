@@ -7,9 +7,9 @@ FINETUNE="RETFound_dinov2_meh"
 
 # ==== Data settings ====
 # change the dataset name and corresponding class number
-DATASET="octdl"
-NUM_CLASS=7
-data_path="./${DATASET}"
+DATASET="OCT2017"
+NUM_CLASS=4
+data_path="C:\Users\OCT3\Documents\Nam\AI Diagnosis\Kermany et al_\OCT2017\OCT2017"
 task="${MODEL_ARCH}_${DATASET}_${ADAPTATION}"
 
 # On Windows, torchrun may fail (no libuv). Fallback to single-process python.
