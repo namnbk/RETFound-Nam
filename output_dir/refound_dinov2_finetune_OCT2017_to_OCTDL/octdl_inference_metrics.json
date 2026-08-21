@@ -1,0 +1,59 @@
+{
+  "confusion_matrix_order": [
+    "DME",
+    "NORMAL",
+    "OTHER"
+  ],
+  "confusion_matrix": [
+    [
+      14,
+      1,
+      0
+    ],
+    [
+      0,
+      33,
+      0
+    ],
+    [
+      87,
+      42,
+      29
+    ]
+  ],
+  "per_class": {
+    "DME": {
+      "precision": 0.13861386137241447,
+      "recall": 0.9333333327111111,
+      "f1": 0.24137930805142693,
+      "support": 15
+    },
+    "NORMAL": {
+      "precision": 0.4342105262586565,
+      "recall": 0.9999999996969696,
+      "f1": 0.6055045828229948,
+      "support": 33
+    },
+    "OTHER": {
+      "precision": 0.9999999996551724,
+      "recall": 0.18354430378585163,
+      "f1": 0.3101604251537076,
+      "support": 158
+    }
+  },
+  "overall_mapped_accuracy": 0.36893203883495146,
+  "overlap_accuracy_DME_NORMAL": 0.9791666666666666,
+  "source_classes": [
+    "CNV",
+    "DME",
+    "DRUSEN",
+    "NORMAL"
+  ],
+  "prediction_distribution": {
+    "DME": 101,
+    "NORMAL": 76,
+    "OTHER": 29
+  },
+  "total_samples": 206,
+  "notes": "Model trained on Kermany 2017. Mapped overlapping classes (DME,NORMAL/NO); others -> OTHER."
+}
