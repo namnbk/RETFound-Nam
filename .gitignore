@@ -134,5 +134,6 @@ dmypy.json
 IDRiD_data
 octdl
 olives
+olives_imagefolder
 
 output_dir/**/*.pth
