@@ -135,5 +135,6 @@ IDRiD_data
 octdl
 olives
 olives_imagefolder
+tmp
 
 output_dir/**/*.pth
