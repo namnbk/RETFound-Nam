@@ -133,5 +133,6 @@ dmypy.json
 
 IDRiD_data
 octdl
+olives
 
 output_dir/**/*.pth
