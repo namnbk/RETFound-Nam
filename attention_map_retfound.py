@@ -27,13 +27,19 @@ def load_backbone(finetune="RETFound_mae_natureOCT", input_size=224, device="cpu
     # the last block's attention, never the pooled output.
     model = models.RETFound_mae(img_size=input_size, num_classes=0, drop_path_rate=0.0, global_pool=False)
 
-    ckpt_path = hf_hub_download(repo_id=f"YukunZhou/{finetune}", filename=f"{finetune}.pth")
+    # A local path to a fine-tuned checkpoint takes precedence over downloading
+    # a named pretrained backbone from the hub.
+    if os.path.isfile(finetune):
+        ckpt_path = finetune
+    else:
+        ckpt_path = hf_hub_download(repo_id=f"YukunZhou/{finetune}", filename=f"{finetune}.pth")
+
     checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     checkpoint_model = checkpoint["model"]
 
     interpolate_pos_embed(model, checkpoint_model)
     missing, unexpected = model.load_state_dict(checkpoint_model, strict=False)
-    print(f"Loaded {finetune}. Missing: {missing} | Unexpected: {unexpected}")
+    print(f"Loaded {ckpt_path}. Missing: {missing} | Unexpected: {unexpected}")
 
     model.to(device)
     model.eval()
@@ -83,7 +89,10 @@ def save_attention_maps(cls_attn, grid_size, out_size, out_dir):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--image_path", type=str, required=True)
-    ap.add_argument("--finetune", type=str, default="RETFound_mae_natureOCT")
+    ap.add_argument("--finetune", type=str, default="RETFound_mae_natureOCT",
+                     help="Either a named pretrained backbone to download from the "
+                          "YukunZhou hub (e.g. RETFound_mae_natureOCT), or a local "
+                          "path to a fine-tuned checkpoint .pth file.")
     ap.add_argument("--input_size", type=int, default=224)
     ap.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--out_root", type=str, default="tmp")
