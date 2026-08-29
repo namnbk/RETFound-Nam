@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "retfound-gradcam": {
+      "command": "C:/Users/lamata/Miniconda3/envs/retfound/python.exe",
+      "args": ["D:/Nam/RETFound-Nam/gradcam_mcp_server.py"]
+    }
+  }
+}

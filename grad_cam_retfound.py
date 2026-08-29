@@ -15,6 +15,10 @@ pretrained backbone.
 Basic command (from project root):
   python grad_cam_retfound.py --image_path ./some_image.png \
       --finetune output_dir/retfound_mae_OLIVES_lp/checkpoint-best.pth
+
+`run_gradcam()` is also importable for programmatic use (e.g. by
+gradcam_mcp_server.py) -- it returns the prediction and both PIL images
+in-memory, optionally also saving them to disk.
 """
 import argparse
 import os
@@ -78,7 +82,10 @@ def unnormalize_to_uint8(img_tensor):
 
 
 def compute_gradcam(model, img_tensor, device, target_class=None):
-    """Returns (cam over patch tokens, target_class index, class probabilities)."""
+    """Returns (cam over patch tokens, target_class index, predicted_class
+    index, class probabilities). target_class is the class explained (the
+    argmax prediction unless the caller overrides it); predicted_class is
+    always the argmax, regardless of any override."""
     activation = {}
 
     def fwd_hook(_module, _input, output):
@@ -90,8 +97,9 @@ def compute_gradcam(model, img_tensor, device, target_class=None):
     handle.remove()
 
     probs = logits.softmax(dim=-1)[0]
+    predicted_class = int(probs.argmax().item())
     if target_class is None:
-        target_class = int(probs.argmax().item())
+        target_class = predicted_class
 
     model.zero_grad()
     logits[0, target_class].backward()
@@ -104,33 +112,93 @@ def compute_gradcam(model, img_tensor, device, target_class=None):
     cam = torch.relu((weights * acts).sum(dim=-1))           # (num_patches,)
     cam = cam / (cam.max() + 1e-8)
 
-    return cam.detach().cpu(), target_class, probs.detach().cpu()
+    return cam.detach().cpu(), target_class, predicted_class, probs.detach().cpu()
 
 
-def render_gradcam(cam, grid_size, base_img_uint8, alpha, out_dir):
-    os.makedirs(out_dir, exist_ok=True)
+def render_gradcam(cam, grid_size, base_img_uint8, alpha, out_dir=None):
+    """Returns (heatmap_image, overlay_image) as PIL Images. Also saves them
+    to out_dir/heatmap.png and out_dir/overlay.png when out_dir is given."""
     gh, gw = grid_size
     out_size = (base_img_uint8.shape[1], base_img_uint8.shape[0])  # (W, H) for PIL resize
 
     amap = cam.reshape(gh, gw).numpy()
     heatmap_img = Image.fromarray((cm.jet(amap)[:, :, :3] * 255).astype(np.uint8)) \
         .resize(out_size, resample=Image.BICUBIC)
-    heatmap_img.save(os.path.join(out_dir, "heatmap.png"))
 
     heatmap_arr = np.array(heatmap_img).astype(np.float32)
     base_arr = base_img_uint8.astype(np.float32)
-    overlay = (alpha * heatmap_arr + (1 - alpha) * base_arr).astype(np.uint8)
-    Image.fromarray(overlay).save(os.path.join(out_dir, "overlay.png"))
+    overlay_img = Image.fromarray((alpha * heatmap_arr + (1 - alpha) * base_arr).astype(np.uint8))
+
+    if out_dir is not None:
+        os.makedirs(out_dir, exist_ok=True)
+        heatmap_img.save(os.path.join(out_dir, "heatmap.png"))
+        overlay_img.save(os.path.join(out_dir, "overlay.png"))
+
+    return heatmap_img, overlay_img
 
 
 def resolve_target_class(target_class_arg, class_names):
     if target_class_arg is None:
         return None
+    if isinstance(target_class_arg, int):
+        return target_class_arg
     if target_class_arg.isdigit():
         return int(target_class_arg)
     if target_class_arg in class_names:
         return class_names.index(target_class_arg)
     raise ValueError(f"--target_class '{target_class_arg}' is not a valid index or one of {class_names}")
+
+
+def run_gradcam(image_path, finetune=None, class_names="DME,DR", target_class=None,
+                 input_size=224, device=None, alpha=0.45, out_dir=None,
+                 nb_classes=None, global_pool=None, model=None, n_classes=None):
+    """End-to-end Grad-CAM: load the classifier (or reuse a pre-loaded one),
+    run one image through it, and return the prediction plus both rendered
+    images in-memory. Optionally also saves heatmap.png/overlay.png to
+    out_dir. Used by both the CLI (main(), below) and gradcam_mcp_server.py.
+
+    Pass `model`/`n_classes` (e.g. from a previous load_classifier() call) to
+    skip re-loading the checkpoint from disk -- useful for a long-lived
+    caller that serves many requests, like the MCP server."""
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device)
+
+    if isinstance(class_names, str):
+        class_names = [c.strip() for c in class_names.split(",")]
+
+    if model is None:
+        if finetune is None:
+            raise ValueError("Either 'finetune' or a pre-loaded 'model' must be provided.")
+        model, n_classes = load_classifier(finetune, input_size, device,
+                                            nb_classes=nb_classes, global_pool=global_pool)
+    if len(class_names) != n_classes:
+        raise ValueError(f"class_names has {len(class_names)} names but checkpoint has "
+                          f"{n_classes} classes: {class_names}")
+
+    tfm = build_eval_transform(input_size)
+    img = Image.open(image_path).convert("RGB")
+    img_tensor = tfm(img).unsqueeze(0)
+
+    target_idx = resolve_target_class(target_class, class_names)
+    cam, target_idx, predicted_idx, probs = compute_gradcam(model, img_tensor, device, target_idx)
+
+    patch_size = model.patch_embed.patch_size[0]
+    grid = input_size // patch_size
+
+    base_img_uint8 = unnormalize_to_uint8(img_tensor[0])
+    heatmap_img, overlay_img = render_gradcam(cam, (grid, grid), base_img_uint8, alpha, out_dir)
+
+    probabilities = {name: float(p) for name, p in zip(class_names, probs.tolist())}
+    return {
+        "predicted_class": class_names[predicted_idx],
+        "target_class": class_names[target_idx],
+        "confidence": probabilities[class_names[target_idx]],
+        "probabilities": probabilities,
+        "overlay_image": overlay_img,
+        "heatmap_image": heatmap_img,
+        "out_dir": out_dir,
+    }
 
 
 def main():
@@ -152,32 +220,18 @@ def main():
     ap.add_argument("--alpha", type=float, default=0.45, help="Heatmap blend weight in the overlay.")
     args = ap.parse_args()
 
-    device = torch.device(args.device)
-    class_names = [c.strip() for c in args.class_names.split(",")]
-
-    model, nb_classes = load_classifier(args.finetune, args.input_size, device,
-                                         nb_classes=args.nb_classes, global_pool=args.global_pool)
-    if len(class_names) != nb_classes:
-        raise ValueError(f"--class_names has {len(class_names)} names but checkpoint has "
-                          f"{nb_classes} classes: {class_names}")
-
-    tfm = build_eval_transform(args.input_size)
-    img = Image.open(args.image_path).convert("RGB")
-    img_tensor = tfm(img).unsqueeze(0)
-
-    target_class = resolve_target_class(args.target_class, class_names)
-    cam, target_class, probs = compute_gradcam(model, img_tensor, device, target_class)
-
-    patch_size = model.patch_embed.patch_size[0]
-    grid = args.input_size // patch_size
-
-    base_img_uint8 = unnormalize_to_uint8(img_tensor[0])
     image_name = os.path.splitext(os.path.basename(args.image_path))[0]
     out_dir = os.path.join(args.out_root, image_name)
-    render_gradcam(cam, (grid, grid), base_img_uint8, args.alpha, out_dir)
 
-    lines = [f"Predicted: {class_names[target_class]} ({probs[target_class]:.1%})", "Class probabilities:"]
-    for name, p in zip(class_names, probs.tolist()):
+    result = run_gradcam(args.image_path, args.finetune, args.class_names, args.target_class,
+                          args.input_size, args.device, args.alpha, out_dir,
+                          args.nb_classes, args.global_pool)
+
+    lines = [f"Predicted: {result['predicted_class']} ({result['probabilities'][result['predicted_class']]:.1%})"]
+    if result["target_class"] != result["predicted_class"]:
+        lines.append(f"Explaining: {result['target_class']} ({result['confidence']:.1%})")
+    lines.append("Class probabilities:")
+    for name, p in result["probabilities"].items():
         lines.append(f"  {name}: {p:.1%}")
     report = "\n".join(lines)
     print(report)
