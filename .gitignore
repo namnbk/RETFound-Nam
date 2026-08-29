@@ -135,6 +135,8 @@ IDRiD_data
 octdl
 olives
 olives_imagefolder
+olives_zarr
+olives_original
 tmp
 tmp_gradcam/
 
