@@ -53,11 +53,24 @@ def server_params(relative_script: str) -> StdioServerParameters:
 
 
 async def call(session: ClientSession, tool: str, **kwargs) -> dict:
-    """FastMCP serializes a plain-dict tool return as a single
-    pretty-printed JSON TextContent block (structuredContent is None) --
-    confirmed live against both servers."""
+    """Return a tool's metadata block as a parsed JSON dict.
+
+    content[0] is always the JSON: dict-returning tools because FastMCP
+    serializes a plain dict as one pretty-printed TextContent block
+    (structuredContent is None), and the image-returning tools (get_bscan,
+    get_fundus_image, generate_gradcam) because they order their
+    CallToolResult metadata-first, ImageContent second. Use call_images()
+    when the pixels themselves matter."""
     result = await session.call_tool(tool, kwargs)
     return json.loads(result.content[0].text)
+
+
+async def call_images(session: ClientSession, tool: str, **kwargs) -> tuple[dict, list]:
+    """Like call(), but also returns the ImageContent blocks -- what Claude
+    Code renders as an actual viewable image rather than base64 text."""
+    result = await session.call_tool(tool, kwargs)
+    meta = json.loads(result.content[0].text)
+    return meta, [c for c in result.content if c.type == "image"]
 
 
 def section(title: str):
@@ -114,9 +127,16 @@ async def scenario_b_confident(data_session: ClientSession, ai_session: ClientSe
 
     print("\nStep 3 -- cross-check: does the top slice agree when classified individually?")
     top_idx = top_candidates[0]["index"]
-    top_bscan = await call(data_session, "get_bscan", patient_id=patient_id, eye=eye,
-                            visit_id="latest", bscan_index=top_idx)
-    slice_result = await call(ai_session, "classify_bscan_retfound", image=top_bscan["image"], bscan_id=top_idx)
+    top_bscan, top_images = await call_images(data_session, "get_bscan", patient_id=patient_id, eye=eye,
+                                               visit_id="latest", bscan_index=top_idx)
+    print(f"  get_bscan(slice {top_idx}) -> viewable {top_bscan['image_width']}x"
+          f"{top_bscan['image_height']} image block ({len(top_images)}x {top_images[0].mimeType}), "
+          "not base64 text -- this is what makes the evidence visually inspectable")
+    # The classifier re-reads the slice from Zarr at full resolution; the
+    # displayed image above is a downscaled copy for looking at, not an input
+    # to pipe onward.
+    slice_result = await call(ai_session, "classify_bscan_retfound", patient_id=patient_id, eye=eye,
+                               visit_id="latest", bscan_index=top_idx, bscan_id=top_idx)
     agree = slice_result["prediction"] == screen["volume_prediction"]
     margin = abs(slice_result["probabilities"]["DME"] - slice_result["probabilities"]["DR"])
     print(f"  classify_bscan_retfound(slice {top_idx}) -> prediction={slice_result['prediction']!r} "
@@ -124,10 +144,13 @@ async def scenario_b_confident(data_session: ClientSession, ai_session: ClientSe
 
     print(f"\nStep 4 -- consistency check: margin {margin:.3f} >= threshold {MARGIN_THRESHOLD} and "
           f"volume/slice predictions agree -> evidence is sufficient, proceed to auxiliary saliency")
-    gradcam = await call(ai_session, "generate_gradcam", patient_id=patient_id, eye=eye,
-                          visit_id="latest", bscan_index=top_idx, target_class=screen["volume_prediction"])
+    gradcam, gradcam_images = await call_images(
+        ai_session, "generate_gradcam", patient_id=patient_id, eye=eye,
+        visit_id="latest", bscan_index=top_idx, target_class=screen["volume_prediction"])
     print(f"  generate_gradcam(slice {top_idx}) -> target_class={gradcam['target_class']!r}, "
-          f"activation_max={gradcam['activation_max']:.3f} "
+          f"activation_max={gradcam['activation_max']:.3f}, overlay returned as a viewable "
+          f"{gradcam['image_width']}x{gradcam['image_height']} image block "
+          f"({len(gradcam_images)}x {gradcam_images[0].mimeType}) "
           "(auxiliary evidence only -- NOT interpreted as a named biomarker)")
 
     answer = build_answer(
@@ -173,7 +196,8 @@ async def scenario_c_disagreement(data_session: ClientSession, ai_session: Clien
         idx = cand["index"]
         bscan = await call(data_session, "get_bscan", patient_id=patient_id, eye=eye,
                             visit_id="latest", bscan_index=idx)
-        result = await call(ai_session, "classify_bscan_retfound", image=bscan["image"], bscan_id=idx)
+        result = await call(ai_session, "classify_bscan_retfound", patient_id=patient_id, eye=eye,
+                             visit_id="latest", bscan_index=idx, bscan_id=idx)
         agree = result["prediction"] == screen["volume_prediction"]
         checked.append({"index": idx, "source_path": bscan["source_path"],
                          "prediction": result["prediction"], "agrees_with_volume": agree})
@@ -183,7 +207,8 @@ async def scenario_c_disagreement(data_session: ClientSession, ai_session: Clien
           "predict DR (0.745) against this volume's DME call, i.e. a genuine tool disagreement:")
     bscan0 = await call(data_session, "get_bscan", patient_id=patient_id, eye=eye,
                          visit_id="latest", bscan_index=0)
-    result0 = await call(ai_session, "classify_bscan_retfound", image=bscan0["image"], bscan_id=0)
+    result0 = await call(ai_session, "classify_bscan_retfound", patient_id=patient_id, eye=eye,
+                          visit_id="latest", bscan_index=0, bscan_id=0)
     print(f"  slice 0: individual prediction={result0['prediction']!r}, "
           f"probabilities={result0['probabilities']}")
 

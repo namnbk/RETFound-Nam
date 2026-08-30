@@ -70,7 +70,7 @@ latest volume shape=[49, 496, 504] dtype=uint8 bscan_count=49
 ======================================================================
 RULE 2 -- retrieve only what's necessary (one bscan, not the whole volume)
 ======================================================================
-fetched bscan 24/48: 215132 base64 chars (not the full 49-slice volume)
+fetched bscan 24/48 as a real MCP image block: 1x image/png at 224x220 (downscaled from 504x496; not the full 49-slice volume)
 
 ======================================================================
 RULE 3 -- longitudinal comparison stays within the same patient+eye
@@ -142,6 +142,11 @@ Concretely, with the actual tools:
    with `start_bscan`/`end_bscan` (not the whole thing if only a few slices
    are needed). The whole volume -> `get_oct_volume` with no range. Never
    fetch a full volume just to look at one slice.
+   `get_bscan`/`get_fundus_image` return a *viewable* MCP image block, sized
+   by `max_dimension` (default 224, the classifier's own input resolution).
+   Leave that default alone unless a question genuinely needs finer detail:
+   224 costs ~70 image tokens, while the untouched 504x496 scan is ~215K
+   base64 characters, and the extra pixels rarely change the answer.
 3. **Longitudinal requests stay within one patient+eye.** `compare_visits(patient_id, eye, visit_a, visit_b)`
    computes BCVA/CST deltas deterministically -- don't do that arithmetic by
    hand, and don't compare visits across different eyes or patients (there is
@@ -185,12 +190,26 @@ Concretely, with the actual tools:
   echoed the raw input alias, which silently broke provenance: `"latest"` is
   not a reproducible identifier). Always read the resolved id back out of
   the response rather than assuming your input alias round-trips.
-- **`FastMCP` serializes a plain-dict tool return as one pretty-printed JSON
-  `TextContent` block, not `structuredContent`** (confirmed live: calling
-  `session.call_tool(...)` returns `result.structuredContent is None` and
-  `result.content[0].text` holding the JSON string) -- when driving these
-  servers directly with the `mcp` client SDK, `json.loads(result.content[0].text)`,
-  don't look for `structuredContent`.
+- **Every tool puts its JSON in `content[0]`, and `structuredContent` is
+  always `None`** -- but for two different reasons, so don't over-generalize
+  from one to the other. Dict-returning tools (`list_patient_examinations`,
+  `get_oct_volume_info`, `get_oct_volume`, `get_clinical_metadata`,
+  `compare_visits`) get there via FastMCP, which serializes a plain dict as
+  one pretty-printed `TextContent` block. The image tools (`get_bscan`,
+  `get_fundus_image`, and retinal-ai's `generate_gradcam`) return an explicit
+  `CallToolResult` whose blocks are ordered metadata-first, image-second,
+  precisely so `json.loads(result.content[0].text)` keeps working. When
+  driving these servers with the `mcp` client SDK, read `content[0].text`;
+  never look for `structuredContent`.
+- **An image tool's pixels are an `ImageContent` block, not a base64 field.**
+  There is no `"image"` key in `get_bscan`/`get_fundus_image`/`generate_gradcam`
+  metadata any more, and nothing to pipe from one tool into another: a
+  multimodal client (Claude Code) renders the block as an image you can
+  actually look at, and `classify_bscan_retfound`/`generate_gradcam` re-read
+  the slice from Zarr at full resolution when given
+  `patient_id`/`eye`/`visit_id`/`bscan_index`. Over the SDK the blocks are
+  `[c for c in result.content if c.type == "image"]` (see `driver.py`'s
+  `call_images()`).
 - **Two files are both literally named `server.py`** (`mcp_servers/retinal_data/server.py`,
   `mcp_servers/retinal_ai/server.py`). Importing both with `sys.path.insert`
   + `import server` in the same Python process returns the *same* cached

@@ -454,6 +454,33 @@ def compare_visits(patient_id, eye, visit_a, visit_b, zarr_dir=None) -> dict:
 # Image codec helpers (shared by both MCP servers)
 # ---------------------------------------------------------------------------
 
+# The classifier's input resolution. Images handed to an LLM are downscaled to
+# this by default: a raw 496x504 B-scan is ~151K base64 chars (~38K tokens) and
+# carries no detail the 224x224 model input preserves anyway, while the same
+# scan at 224 costs ~70 image tokens. See downscale_for_display().
+MODEL_INPUT_SIZE = 224
+
+
+def downscale_for_display(img: Image.Image, max_side: int = MODEL_INPUT_SIZE) -> Image.Image:
+    """Shrink `img` so its longest side is at most `max_side`, preserving
+    aspect ratio. Never upscales -- an image already within the bound is
+    returned unchanged.
+
+    This is a plain aspect-preserving resize, NOT the model's eval transform
+    (which resizes the short side to 256 then center-crops to 224). Callers
+    that need the exact pixels the classifier saw should render from the
+    transformed tensor instead (see grad_cam_retfound.unnormalize_to_uint8);
+    this is for giving a viewer something to look at."""
+    if max_side <= 0:
+        raise OctZarrError(f"max_side must be positive, got {max_side}")
+    longest = max(img.size)
+    if longest <= max_side:
+        return img
+    scale = max_side / longest
+    new_size = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
+    return img.resize(new_size, resample=Image.LANCZOS)
+
+
 def pil_to_base64_png(img: Image.Image) -> str:
     buf = io.BytesIO()
     img.save(buf, format="PNG")

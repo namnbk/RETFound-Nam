@@ -62,9 +62,11 @@ SCENARIO A -- pure data question: retinal-ai is never touched
 
 SCENARIO B -- diagnostic question, patient 60/OD: sufficient, consistent evidence
   screen_oct_volume -> volume_prediction='DR', top candidates=[{'index': 45, 'DR_probability': 0.985}, ...]
+  get_bscan(slice 45) -> viewable 224x220 image block (1x image/png), not base64 text
   classify_bscan_retfound(slice 45) -> prediction='DR' (volume-level agrees: True); slice-level margin=0.970
   consistency check: margin 0.970 >= threshold 0.6 and predictions agree -> evidence sufficient
-  generate_gradcam(slice 45) -> target_class='DR', activation_max=0.018 (auxiliary evidence only)
+  generate_gradcam(slice 45) -> target_class='DR', activation_max=0.018, overlay returned as a
+    viewable 224x224 image block (auxiliary evidence only)
   confidence.label = "high (volume/slice agree, wide margin)"
 
 SCENARIO C -- diagnostic question, patient 206/OD: weak margin + real disagreement
@@ -76,8 +78,9 @@ SCENARIO C -- diagnostic question, patient 206/OD: weak margin + real disagreeme
   (no Grad-CAM call -- there is no settled prediction to explain)
 
 SCENARIO D -- biomarker question: no validated tool exists to answer it
-  generate_gradcam response fields: ['activation_max', 'activation_mean', 'bscan_index', 'model',
-    'saliency_image', 'target_class'] -- no 'biomarker'/'IRF' field on any tool, on either server
+  generate_gradcam metadata fields: ['activation_max', 'activation_mean', 'bscan_index', 'eye',
+    'image_height', 'image_width', 'model', 'patient_id', 'source_path', 'target_class', 'visit_id']
+    -- no 'biomarker'/'IRF' field on any tool, on either server
 
 All four scenarios completed against the real retinal-data and retinal-ai MCP servers over
 stdio -- no scenario followed the same tool sequence as any other.
@@ -149,7 +152,11 @@ Concretely, with the actual tools:
    one -- `generate_gradcam`'s own docstring states it does not interpret
    its heatmap as a biomarker (e.g. "this is IRF"), and its response has no
    `biomarker` field (verified live in Scenario D:
-   `['activation_max', 'activation_mean', 'bscan_index', 'model', 'saliency_image', 'target_class']`).
+   `['activation_max', 'activation_mean', 'bscan_index', 'eye', 'image_height', 'image_width',
+   'model', 'patient_id', 'source_path', 'target_class', 'visit_id']`). This holds just as much
+   now that you can *see* the overlay: looking at a heatmap does not turn it
+   into a biomarker prediction, because the model behind it was never
+   trained to make one.
    A high-activation region can be described by location ("saliency
    concentrated near slice 45's outer retina"), never labeled with a named
    finding no tool actually predicted.
@@ -213,17 +220,30 @@ Concretely, with the actual tools:
   established clinical meaning or threshold.** They're raw post-hook
   activation statistics from `grad_cam_retfound.py`, useful only to
   describe *where* saliency concentrated -- don't invent a confidence score
-  or biomarker likelihood from their magnitude.
+  or biomarker likelihood from their magnitude. The overlay now comes back as
+  a viewable image, so describe what you can actually see in it (location,
+  extent, which retinal layers it covers) rather than narrating from the
+  activation numbers alone.
 - **The DME-vs-DR classifier has no "normal" class**, so it will confidently
   output DME or DR even for a scan a clinician would call unremarkable.
   If asked "is this eye normal," that's structurally the same guardrail as
   the biomarker case (rule 6/Scenario D) -- no tool here can answer it, say
   so rather than reporting the lower-probability class as "normal."
-- **`FastMCP` returns a plain-dict tool result as a single pretty-printed
-  JSON `TextContent` block** (`structuredContent` is `None`) -- when
-  driving these servers directly, as `driver.py` does,
-  `json.loads(result.content[0].text)`, same as `retinal-data-operations`
-  already documents.
+- **`content[0]` is always the JSON metadata; images come after it.**
+  Dict-returning tools (`classify_bscan_retfound`, `screen_oct_volume`) land
+  there because FastMCP serializes a plain dict as one pretty-printed
+  `TextContent` block; `generate_gradcam` returns an explicit
+  `CallToolResult` ordered metadata-first, `ImageContent` second so the same
+  `json.loads(result.content[0].text)` still works. `structuredContent` is
+  `None` either way. See `retinal-data-operations` for the full note.
+- **Grad-CAM's overlay is the model's 224x224 center-cropped view**, not the
+  same framing as `get_bscan`'s full-width downscale of that slice. When
+  describing *where* saliency sits, describe it against the overlay you were
+  given -- don't map coordinates between the two crops by eye.
+- **`activation_max` is pre-normalization, `activation_mean` is
+  post-normalization**, so `mean` routinely exceeds `max` (e.g. 0.175 vs
+  0.018 on patient 60/OD slice 45). They are not on a common scale and their
+  ratio means nothing; report either one only as the raw diagnostic it is.
 
 ## Troubleshooting
 

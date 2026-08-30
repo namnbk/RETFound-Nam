@@ -33,6 +33,7 @@ Config via environment variables (all optional):
   RETFOUND_DEVICE       default: cuda if available, else cpu
   OCT_ZARR_DIR          default: <repo root>/olives_zarr
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -43,6 +44,7 @@ sys.path.insert(0, REPO_ROOT)
 import torch  # noqa: E402
 from PIL import Image  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
+from mcp.types import CallToolResult, ImageContent, TextContent  # noqa: E402
 
 import grad_cam_retfound as gc  # noqa: E402
 import oct_zarr as oz  # noqa: E402
@@ -73,29 +75,86 @@ def _class_names():
     return [c.strip() for c in DEFAULT_CLASS_NAMES.split(",")]
 
 
+def _image_result(img: Image.Image, metadata: dict) -> CallToolResult:
+    """Package a rendered image as a real MCP result: a metadata TextContent
+    block first, then the pixels as an ImageContent block.
+
+    A base64 string inside a returned dict is serialized by FastMCP as
+    literal text, which a multimodal client can only read, never see -- an
+    ImageContent block is what makes a saliency map actually inspectable.
+    Metadata stays in block 0 so SDK callers can keep reading
+    `json.loads(result.content[0].text)`."""
+    return CallToolResult(content=[
+        TextContent(type="text", text=json.dumps({
+            **metadata, "image_width": img.width, "image_height": img.height,
+        }, indent=2)),
+        ImageContent(type="image", data=oz.pil_to_base64_png(img), mimeType="image/png"),
+    ])
+
+
+def _error_result(message: str) -> CallToolResult:
+    """Mirrors retinal-data's error shape: the historical `{"error": ...}`
+    JSON text, isError left False, so "an `error` key means unanswerable"
+    holds across both servers regardless of a tool's return type."""
+    return CallToolResult(content=[TextContent(type="text", text=json.dumps({"error": message}, indent=2))])
+
+
 @mcp.tool()
-def classify_bscan_retfound(image: str, bscan_id: int | None = None) -> dict:
-    """Classify a single OCT B-scan image with the fine-tuned RETFound
-    classifier. Takes a raw base64-encoded PNG (e.g. straight from the
-    retinal-data server's get_bscan "image" output) rather than a zarr
-    lookup, so it works on any image the caller already has in hand.
+def classify_bscan_retfound(patient_id: int | None = None, eye: str | None = None,
+                             visit_id: str = "latest", bscan_index: int | None = None,
+                             image: str | None = None, bscan_id: int | None = None) -> dict:
+    """Classify a single OCT B-scan with the fine-tuned RETFound classifier.
+
+    Normally identify the slice by patient_id/eye/visit_id/bscan_index and
+    this tool reads it from the Zarr store at full resolution -- do NOT try
+    to forward pixels from get_bscan, which returns a downscaled MCP image
+    block for viewing, not a base64 string to pipe. `image` remains available
+    only for an image that exists nowhere in the store.
 
     Args:
-        image: Base64-encoded PNG image data.
+        patient_id: Patient identifier. Required unless `image` is given.
+        eye: "OD" or "OS". Required unless `image` is given.
+        visit_id: An exact visit id ("visit_01"), "latest" (default),
+            "first", or a raw source visit label (e.g. "W0", "V1").
+        bscan_index: 0-based index into the volume. Required unless `image`
+            is given.
+        image: Escape hatch -- a base64-encoded PNG to classify directly,
+            for an image that isn't in the Zarr store.
         bscan_id: Optional index to echo back in the response for
-            bookkeeping (not used for classification itself).
+            bookkeeping (not used for classification itself). Defaults to
+            `bscan_index` on the Zarr path.
     """
     try:
         model, n_classes = _get_model()
         class_names = _class_names()
-        pil_img = oz.base64_png_to_pil(image)
+        provenance = {}
+
+        if image is not None:
+            pil_img = oz.base64_png_to_pil(image)
+        else:
+            missing = [n for n, v in (("patient_id", patient_id), ("eye", eye),
+                                       ("bscan_index", bscan_index)) if v is None]
+            if missing:
+                return {"error": f"classify_bscan_retfound needs {', '.join(missing)} to locate a "
+                                  f"B-scan (or an `image` to classify directly)."}
+            eye_n = oz.normalize_eye(eye)
+            arr, source_file, resolved_visit_id = oz.get_bscan_array(patient_id, eye_n, visit_id, bscan_index)
+            pil_img = Image.fromarray(arr)
+            if bscan_id is None:
+                bscan_id = bscan_index
+            provenance = {"patient_id": patient_id, "eye": eye_n, "visit_id": resolved_visit_id,
+                          "bscan_index": bscan_index, "source_path": source_file}
+
         result = gc.classify_image(model, class_names, DEFAULT_DEVICE, pil_img, INPUT_SIZE)
         return {
             "model": MODEL_NAME,
             "prediction": result["predicted_class"],
             "probabilities": result["probabilities"],
             "bscan_id": bscan_id,
+            **provenance,
         }
+    except oz.OctZarrError as e:
+        return {"error": str(e)}
     except Exception as e:
         return {"error": f"classify_bscan_retfound failed: {e}"}
 
@@ -154,12 +213,22 @@ def screen_oct_volume(patient_id: int, eye: str, visit_id: str = "latest", top_k
 
 @mcp.tool()
 def generate_gradcam(patient_id: int, eye: str, visit_id: str, bscan_index: int,
-                      target_class: str | None = None) -> dict:
+                      target_class: str | None = None) -> CallToolResult:
     """Generate a Grad-CAM saliency map explaining a classification decision
-    for one B-scan. Returns the heatmap-overlay image and raw activation
-    statistics only -- it does NOT interpret the heatmap as a specific
-    biomarker (e.g. "this is IRF"), since no model here establishes that
-    relationship.
+    for one B-scan. Returns a metadata JSON block (target class, activation
+    statistics, provenance) followed by the heatmap overlay as a viewable MCP
+    image -- so the saliency can actually be inspected against the retina it
+    sits on, not just summarized numerically.
+
+    The overlay is 224x224: the model's own eval view of the slice (short
+    side resized to 256, center-cropped to 224), so the heatmap and the
+    pixels underneath it are in exact correspondence. Note this is a
+    center crop -- it is not the same framing as get_bscan's full-width
+    downscale of the same slice.
+
+    Reading it: the overlay says which regions moved the class logit, and
+    nothing more. It does NOT identify a biomarker (e.g. "this is IRF") --
+    no model here establishes that relationship, so do not narrate one.
 
     Args:
         patient_id: Patient identifier.
@@ -172,7 +241,7 @@ def generate_gradcam(patient_id: int, eye: str, visit_id: str, bscan_index: int,
     """
     try:
         eye_n = oz.normalize_eye(eye)
-        arr, _source_file, _resolved_visit_id = oz.get_bscan_array(patient_id, eye_n, visit_id, bscan_index)
+        arr, source_file, resolved_visit_id = oz.get_bscan_array(patient_id, eye_n, visit_id, bscan_index)
         model, n_classes = _get_model()
         class_names = _class_names()
         pil_img = Image.fromarray(arr)
@@ -181,18 +250,21 @@ def generate_gradcam(patient_id: int, eye: str, visit_id: str, bscan_index: int,
             pil_img, class_names=class_names, target_class=target_class,
             input_size=INPUT_SIZE, device=DEFAULT_DEVICE, model=model, n_classes=n_classes,
         )
-        return {
+        return _image_result(result["overlay_image"], {
             "bscan_index": bscan_index,
+            "patient_id": patient_id,
+            "eye": eye_n,
+            "visit_id": resolved_visit_id,
+            "source_path": source_file,
             "target_class": result["target_class"],
-            "saliency_image": oz.pil_to_base64_png(result["overlay_image"]),
             "model": MODEL_NAME,
             "activation_max": result["activation_max"],
             "activation_mean": result["activation_mean"],
-        }
+        })
     except oz.OctZarrError as e:
-        return {"error": str(e)}
+        return _error_result(str(e))
     except Exception as e:
-        return {"error": f"generate_gradcam failed: {e}"}
+        return _error_result(f"generate_gradcam failed: {e}")
 
 
 if __name__ == "__main__":

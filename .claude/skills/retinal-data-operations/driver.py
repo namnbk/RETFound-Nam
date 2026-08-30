@@ -30,13 +30,25 @@ def server_params(relative_script: str) -> StdioServerParameters:
 
 
 async def call(session: ClientSession, tool: str, **kwargs) -> dict:
-    """Call a tool and return its parsed JSON dict result. FastMCP serializes
-    a plain-dict tool return as a single pretty-printed JSON TextContent
-    block (structuredContent is None) -- this is the shape every retinal-data
-    /retinal-ai tool actually returns, confirmed live against this server."""
+    """Call a tool and return its metadata block as a parsed JSON dict.
+
+    Every tool on both servers puts its JSON in content[0]: dict-returning
+    tools because FastMCP serializes a plain dict as one pretty-printed
+    TextContent block (structuredContent stays None), and the image-returning
+    tools (get_bscan, get_fundus_image, generate_gradcam) because they
+    deliberately order their CallToolResult metadata-first, ImageContent
+    second. Use call_images() to get at the pixels."""
     result = await session.call_tool(tool, kwargs)
-    text = result.content[0].text
-    return json.loads(text)
+    return json.loads(result.content[0].text)
+
+
+async def call_images(session: ClientSession, tool: str, **kwargs) -> tuple[dict, list]:
+    """Like call(), but also returns the ImageContent blocks. Claude Code
+    sees these as real images; over the SDK they arrive as base64 PNG data
+    on blocks with type == "image"."""
+    result = await session.call_tool(tool, kwargs)
+    meta = json.loads(result.content[0].text)
+    return meta, [c for c in result.content if c.type == "image"]
 
 
 def section(title: str):
@@ -62,10 +74,13 @@ async def run_retinal_data_demo(patient_id: int, eye: str):
 
             section("RULE 2 -- retrieve only what's necessary (one bscan, not the whole volume)")
             mid_index = info["bscan_count"] // 2
-            bscan = await call(session, "get_bscan", patient_id=patient_id, eye=eye,
-                                visit_id="latest", bscan_index=mid_index)
-            print(f"fetched bscan {mid_index}/{info['bscan_count'] - 1}: "
-                  f"{len(bscan['image'])} base64 chars (not the full {info['bscan_count']}-slice volume)")
+            bscan, bscan_images = await call_images(session, "get_bscan", patient_id=patient_id,
+                                                     eye=eye, visit_id="latest", bscan_index=mid_index)
+            print(f"fetched bscan {mid_index}/{info['bscan_count'] - 1} as a real MCP image block: "
+                  f"{len(bscan_images)}x {bscan_images[0].mimeType} at "
+                  f"{bscan['image_width']}x{bscan['image_height']} "
+                  f"(downscaled from {bscan['source_width']}x{bscan['source_height']}; "
+                  f"not the full {info['bscan_count']}-slice volume)")
 
             section("RULE 3 -- longitudinal comparison stays within the same patient+eye")
             cmp = await call(session, "compare_visits", patient_id=patient_id, eye=eye,
