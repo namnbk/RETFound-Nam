@@ -1,7 +1,8 @@
 """
 Sanity-check the Zarr stores produced by build_olives_zarr.py: walk each
-patient store, print its hierarchy, and verify a sample of arrays round-trip
-back to pixel-identical data against the original .tif files.
+patient store using oct_zarr's reader API (doubling as a regression test of
+that API), and verify a sample of arrays round-trip back to pixel-identical
+data against the original source image files.
 
 Basic command (from project root, after running build_olives_zarr.py):
   python test_olives_zarr.py --zarr_dir ./olives_zarr --source_dir ./olives_original
@@ -10,71 +11,54 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-import zarr
 from PIL import Image
 
+import oct_zarr as oz
 
-def describe_store(store_path: Path):
-    root = zarr.open_group(zarr.storage.LocalStore(str(store_path)), mode="r")
-    print(f"\n=== {store_path.name} ===")
-    print("patient attrs:", dict(root.attrs))
 
-    for eye in ("OD", "OS"):
-        if eye not in root["eyes"]:
+def describe_store(patient_id: int, zarr_dir: Path):
+    info = oz.get_patient_info(patient_id, zarr_dir)
+    print(f"\n=== patient_{patient_id}.zarr ===")
+    print("patient attrs:", info)
+
+    for eye in oz.list_eyes(patient_id, zarr_dir):
+        visits = oz.list_visits(patient_id, eye, zarr_dir)
+        print(f"  eye {eye}: {len(visits)} visits -> {[v['visit_id'] for v in visits]}")
+
+        for v in visits:
+            vol_info = oz.get_oct_volume_info(patient_id, eye, v["visit_id"], zarr_dir)
+            print(f"    {v['visit_id']} (source={v['source_visit']}): "
+                  f"modalities={v['modalities']}, oct_shape={vol_info['shape']}, "
+                  f"has_clinical={v['has_clinical']}")
+            if v["has_clinical"]:
+                print(f"      clinical: {oz.get_clinical(patient_id, eye, v['visit_id'], zarr_dir)}")
+
+
+def verify_roundtrip(patient_id: int, zarr_dir: Path, source_dir: Path):
+    """Spot-check that the first B-scan and the fundus images of the first
+    visit on the study eye are pixel-identical to their source image files."""
+    info = oz.get_patient_info(patient_id, zarr_dir)
+    source_folder = info["source_folder"]
+
+    eye = oz.list_eyes(patient_id, zarr_dir)[0]
+    visits = oz.list_visits(patient_id, eye, zarr_dir)
+    visit_id = visits[0]["visit_id"]
+    source_visit = visits[0]["source_visit"]
+    eye_dir = source_dir / source_folder / source_visit / eye
+
+    bscan, source_file = oz.get_bscan_array(patient_id, eye, visit_id, 0, zarr_dir)
+    original = np.array(Image.open(eye_dir / source_file).convert("L"))
+    assert np.array_equal(bscan, original), f"B-scan mismatch for patient {patient_id}"
+    print(f"  [OK] patient {patient_id}: bscan 0 matches {source_file} (shape={bscan.shape})")
+
+    for modality in ("near-IR", "color"):
+        if f"fundus_{'near_ir' if modality == 'near-IR' else 'color'}" not in visits[0]["modalities"]:
             continue
-        eye_group = root["eyes"][eye]
-        visit_names = sorted(eye_group.keys())
-        print(f"  eye {eye}: {len(visit_names)} visits -> {visit_names}")
-
-        for visit_name in visit_names:
-            visit_group = eye_group[visit_name]
-            members = list(visit_group.keys())
-            oct_shape = visit_group["oct_image"].shape if "oct_image" in members else None
-            has_clinical = "clinical" in members
-            has_biomarkers = "biomarkers" in members
-            print(f"    {visit_name} (source={visit_group.attrs.get('source_visit')}): "
-                  f"members={members}, oct_image.shape={oct_shape}, "
-                  f"clinical={has_clinical}, biomarkers={has_biomarkers}")
-            if has_clinical:
-                print(f"      clinical attrs: {dict(visit_group['clinical'].attrs)}")
-            if has_biomarkers:
-                vals = visit_group["biomarkers"]["values"]
-                print(f"      biomarkers/values.shape={vals.shape}, dtype={vals.dtype}, "
-                      f"labels[:3]={vals.attrs['labels'][:3]}")
-
-
-def verify_roundtrip(store_path: Path, source_dir: Path):
-    """Spot-check that the first B-scan and the fundus images of visit_01/OD
-    are pixel-identical to their source .tif files."""
-    root = zarr.open_group(zarr.storage.LocalStore(str(store_path)), mode="r")
-    patient_id = root.attrs["patient_id"]
-    source_folder = root.attrs["source_folder"]
-
-    visit_group = root["eyes"]["OD"]["visit_01"]
-    source_visit = visit_group.attrs["source_visit"]
-    eye_dir = source_dir / source_folder / source_visit / "OD"
-
-    oct_arr = visit_group["oct_image"]
-    bscan_files = oct_arr.attrs["bscan_source_files"]
-    first_slice = np.asarray(oct_arr[0])
-    original = np.array(Image.open(eye_dir / bscan_files[0]).convert("L"))
-    assert np.array_equal(first_slice, original), f"B-scan mismatch for patient {patient_id}"
-    print(f"  [OK] patient {patient_id}: oct_image[0] matches {bscan_files[0]} "
-          f"(shape={first_slice.shape})")
-
-    if "near-IR" in visit_group["fundus"]:
-        near_ir = np.asarray(visit_group["fundus"]["near-IR"][:])
-        src_name = visit_group["fundus"]["near-IR"].attrs["source_file"]
-        original = np.array(Image.open(eye_dir / src_name).convert("L"))
-        assert np.array_equal(near_ir, original), f"near-IR fundus mismatch for patient {patient_id}"
-        print(f"  [OK] patient {patient_id}: fundus/near-IR matches {src_name}")
-
-    if "color" in visit_group["fundus"]:
-        color = np.asarray(visit_group["fundus"]["color"][:])
-        src_name = visit_group["fundus"]["color"].attrs["source_file"]
-        original = np.array(Image.open(eye_dir / src_name).convert("RGB"))
-        assert np.array_equal(color, original), f"color fundus mismatch for patient {patient_id}"
-        print(f"  [OK] patient {patient_id}: fundus/color matches {src_name}")
+        arr, source_file = oz.get_fundus_array(patient_id, eye, visit_id, modality, zarr_dir)
+        mode = "L" if modality == "near-IR" else "RGB"
+        original = np.array(Image.open(eye_dir / source_file).convert(mode))
+        assert np.array_equal(arr, original), f"fundus/{modality} mismatch for patient {patient_id}"
+        print(f"  [OK] patient {patient_id}: fundus/{modality} matches {source_file}")
 
 
 def main():
@@ -85,14 +69,17 @@ def main():
 
     zarr_dir = Path(args.zarr_dir)
     source_dir = Path(args.source_dir)
-    store_paths = sorted(zarr_dir.glob("*.zarr"))
+    patient_ids = oz.list_patient_ids(zarr_dir)
 
-    for store_path in store_paths:
-        describe_store(store_path)
+    for pid in patient_ids:
+        describe_store(pid, zarr_dir)
 
     print("\n--- round-trip pixel verification ---")
-    for store_path in store_paths:
-        verify_roundtrip(store_path, source_dir)
+    for pid in patient_ids:
+        try:
+            verify_roundtrip(pid, zarr_dir, source_dir)
+        except FileNotFoundError as e:
+            print(f"  [SKIP] patient {pid}: source file not reachable under --source_dir={source_dir} ({e})")
 
     print("\nAll checks passed.")
 

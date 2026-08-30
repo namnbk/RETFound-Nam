@@ -16,9 +16,10 @@ Basic command (from project root):
   python grad_cam_retfound.py --image_path ./some_image.png \
       --finetune output_dir/retfound_mae_OLIVES_lp/checkpoint-best.pth
 
-`run_gradcam()` is also importable for programmatic use (e.g. by
-gradcam_mcp_server.py) -- it returns the prediction and both PIL images
-in-memory, optionally also saving them to disk.
+`run_gradcam()`, `classify_image()`, and `classify_batch()` are also
+importable for programmatic use (e.g. by mcp_servers/retinal_ai/server.py)
+-- run_gradcam() returns the prediction and both PIL images in-memory,
+optionally also saving them to disk.
 """
 import argparse
 import os
@@ -83,9 +84,12 @@ def unnormalize_to_uint8(img_tensor):
 
 def compute_gradcam(model, img_tensor, device, target_class=None):
     """Returns (cam over patch tokens, target_class index, predicted_class
-    index, class probabilities). target_class is the class explained (the
-    argmax prediction unless the caller overrides it); predicted_class is
-    always the argmax, regardless of any override."""
+    index, class probabilities, raw_max). target_class is the class explained
+    (the argmax prediction unless the caller overrides it); predicted_class is
+    always the argmax, regardless of any override. raw_max is the
+    pre-normalization peak activation (cam is itself normalized to [0,1], so
+    its own max is trivially ~1.0 -- raw_max is the only meaningful "how
+    strong was the peak evidence" signal)."""
     activation = {}
 
     def fwd_hook(_module, _input, output):
@@ -110,9 +114,10 @@ def compute_gradcam(model, img_tensor, device, target_class=None):
 
     weights = grad.mean(dim=0)                              # (C,)
     cam = torch.relu((weights * acts).sum(dim=-1))           # (num_patches,)
-    cam = cam / (cam.max() + 1e-8)
+    raw_max = float(cam.max().item())
+    cam = cam / (raw_max + 1e-8)
 
-    return cam.detach().cpu(), target_class, predicted_class, probs.detach().cpu()
+    return cam.detach().cpu(), target_class, predicted_class, probs.detach().cpu(), raw_max
 
 
 def render_gradcam(cam, grid_size, base_img_uint8, alpha, out_dir=None):
@@ -137,6 +142,45 @@ def render_gradcam(cam, grid_size, base_img_uint8, alpha, out_dir=None):
     return heatmap_img, overlay_img
 
 
+def classify_image(model, class_names, device, image, input_size=224) -> dict:
+    """Classify a single image with a plain no-grad forward pass -- no
+    backward pass, no Grad-CAM rendering. Fast path for callers that only
+    need a prediction (e.g. classify_bscan_retfound in the retinal-ai MCP
+    server). `image` is a PIL.Image."""
+    tfm = build_eval_transform(input_size)
+    img_tensor = tfm(image.convert("RGB")).unsqueeze(0).to(device)
+    with torch.no_grad():
+        probs = model(img_tensor).softmax(dim=-1)[0].cpu()
+    predicted_idx = int(probs.argmax().item())
+    return {
+        "predicted_class": class_names[predicted_idx],
+        "probabilities": {name: float(p) for name, p in zip(class_names, probs.tolist())},
+    }
+
+
+def classify_batch(model, class_names, device, images, input_size=224, batch_size=32) -> list:
+    """Classify many images with chunked no-grad batched forward passes --
+    one (or a few) forward pass instead of one per image. Used by
+    screen_oct_volume in the retinal-ai MCP server to score a whole OCT
+    volume (up to 49 B-scans) without 49 separate model calls. `images` is a
+    list of PIL.Image; returns a list of {"predicted_class","probabilities"}
+    dicts in the same order as `images`."""
+    tfm = build_eval_transform(input_size)
+    results = []
+    for i in range(0, len(images), batch_size):
+        chunk = images[i:i + batch_size]
+        tensor = torch.stack([tfm(im.convert("RGB")) for im in chunk]).to(device)
+        with torch.no_grad():
+            probs = model(tensor).softmax(dim=-1).cpu()
+        for row in probs:
+            predicted_idx = int(row.argmax().item())
+            results.append({
+                "predicted_class": class_names[predicted_idx],
+                "probabilities": {name: float(p) for name, p in zip(class_names, row.tolist())},
+            })
+    return results
+
+
 def resolve_target_class(target_class_arg, class_names):
     if target_class_arg is None:
         return None
@@ -159,7 +203,10 @@ def run_gradcam(image_path, finetune=None, class_names="DME,DR", target_class=No
 
     Pass `model`/`n_classes` (e.g. from a previous load_classifier() call) to
     skip re-loading the checkpoint from disk -- useful for a long-lived
-    caller that serves many requests, like the MCP server."""
+    caller that serves many requests, like the MCP server.
+
+    `image_path` may also be an in-memory PIL.Image (e.g. a B-scan fetched
+    from a Zarr store rather than a file on disk)."""
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device)
@@ -177,11 +224,11 @@ def run_gradcam(image_path, finetune=None, class_names="DME,DR", target_class=No
                           f"{n_classes} classes: {class_names}")
 
     tfm = build_eval_transform(input_size)
-    img = Image.open(image_path).convert("RGB")
+    img = image_path.convert("RGB") if isinstance(image_path, Image.Image) else Image.open(image_path).convert("RGB")
     img_tensor = tfm(img).unsqueeze(0)
 
     target_idx = resolve_target_class(target_class, class_names)
-    cam, target_idx, predicted_idx, probs = compute_gradcam(model, img_tensor, device, target_idx)
+    cam, target_idx, predicted_idx, probs, raw_max = compute_gradcam(model, img_tensor, device, target_idx)
 
     patch_size = model.patch_embed.patch_size[0]
     grid = input_size // patch_size
@@ -197,6 +244,8 @@ def run_gradcam(image_path, finetune=None, class_names="DME,DR", target_class=No
         "probabilities": probabilities,
         "overlay_image": overlay_img,
         "heatmap_image": heatmap_img,
+        "activation_max": raw_max,
+        "activation_mean": float(cam.mean().item()),
         "out_dir": out_dir,
     }
 

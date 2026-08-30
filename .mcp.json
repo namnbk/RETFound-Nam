@@ -1,8 +1,12 @@
 {
   "mcpServers": {
-    "retfound-gradcam": {
+    "retinal-data": {
       "command": "C:/Users/lamata/Miniconda3/envs/retfound/python.exe",
-      "args": ["D:/Nam/RETFound-Nam/gradcam_mcp_server.py"]
+      "args": ["D:/Nam/RETFound-Nam/mcp_servers/retinal_data/server.py"]
+    },
+    "retinal-ai": {
+      "command": "C:/Users/lamata/Miniconda3/envs/retfound/python.exe",
+      "args": ["D:/Nam/RETFound-Nam/mcp_servers/retinal_ai/server.py"]
     }
   }
 }
