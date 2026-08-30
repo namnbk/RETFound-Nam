@@ -139,5 +139,6 @@ olives_zarr
 olives_original
 tmp
 tmp_gradcam/
+results/raw/
 
 output_dir/**/*.pth
