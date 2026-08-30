@@ -92,13 +92,13 @@ def get_bscan(patient_id: int, eye: str, visit_id: str, bscan_index: int) -> dic
     """
     try:
         eye_n = oz.normalize_eye(eye)
-        arr, source_file = oz.get_bscan_array(patient_id, eye_n, visit_id, bscan_index)
+        arr, source_file, resolved_visit_id = oz.get_bscan_array(patient_id, eye_n, visit_id, bscan_index)
         return {
             "image": oz.array_to_base64_png(arr),
             "bscan_index": bscan_index,
             "patient_id": patient_id,
             "eye": eye_n,
-            "visit_id": visit_id,
+            "visit_id": resolved_visit_id,
             "source_path": source_file,
         }
     except oz.OctZarrError as e:
@@ -124,11 +124,11 @@ def get_oct_volume(patient_id: int, eye: str, visit_id: str,
     """
     try:
         eye_n = oz.normalize_eye(eye)
-        arr = oz.get_oct_volume_array(patient_id, eye_n, visit_id, start_bscan, end_bscan)
+        arr, resolved_visit_id = oz.get_oct_volume_array(patient_id, eye_n, visit_id, start_bscan, end_bscan)
         return {
             "patient_id": patient_id,
             "eye": eye_n,
-            "visit_id": visit_id,
+            "visit_id": resolved_visit_id,
             "start_bscan": 0 if start_bscan is None else start_bscan,
             "end_bscan": arr.shape[0] if end_bscan is None else end_bscan,
             "shape": list(arr.shape),
@@ -156,13 +156,13 @@ def get_fundus_image(patient_id: int, eye: str, visit_id: str, modality: str = "
     """
     try:
         eye_n = oz.normalize_eye(eye)
-        arr, source_file = oz.get_fundus_array(patient_id, eye_n, visit_id, modality)
+        arr, source_file, resolved_visit_id = oz.get_fundus_array(patient_id, eye_n, visit_id, modality)
         return {
             "image": oz.array_to_base64_png(arr),
             "modality": modality,
             "patient_id": patient_id,
             "eye": eye_n,
-            "visit_id": visit_id,
+            "visit_id": resolved_visit_id,
             "source_path": source_file,
         }
     except oz.OctZarrError as e:
@@ -187,15 +187,15 @@ def get_clinical_metadata(patient_id: int, eye: str, visit_id: str) -> dict:
     """
     try:
         eye_n = oz.normalize_eye(eye)
-        clinical = oz.get_clinical(patient_id, eye_n, visit_id)
+        clinical, resolved_visit_id = oz.get_clinical(patient_id, eye_n, visit_id)
         if clinical is None:
             return {"error": f"No clinical data recorded for patient {patient_id} eye {eye_n} "
-                              f"visit {visit_id!r} -- BCVA/CST are only recorded for the study eye "
+                              f"visit {resolved_visit_id!r} -- BCVA/CST are only recorded for the study eye "
                               f"of each patient."}
         return {
             "patient_id": patient_id,
             "eye": eye_n,
-            "visit_id": visit_id,
+            "visit_id": resolved_visit_id,
             "BCVA": clinical["bcva"],
             "CST": clinical["cst_um"],
             "eye_id": clinical["eye_id"],

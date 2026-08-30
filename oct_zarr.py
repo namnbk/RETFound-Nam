@@ -361,6 +361,7 @@ def get_oct_volume_info(patient_id, eye, visit_id, zarr_dir=None) -> dict:
     visit_group, resolved_visit_id = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
     oct_arr = visit_group["oct_image"]
     return {
+        "visit_id": resolved_visit_id,
         "shape": list(oct_arr.shape),
         "dtype": str(oct_arr.dtype),
         "bscan_count": int(oct_arr.shape[0]),
@@ -375,8 +376,12 @@ def get_oct_volume_info(patient_id, eye, visit_id, zarr_dir=None) -> dict:
 
 
 def get_bscan_array(patient_id, eye, visit_id, bscan_index, zarr_dir=None):
-    """Returns (np.ndarray (H,W) uint8, source_filename: str)."""
-    visit_group, _ = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
+    """Returns (np.ndarray (H,W) uint8, source_filename: str, resolved_visit_id: str).
+
+    The resolved visit_id is the canonical "visit_NN" -- callers should
+    report THAT as provenance, not whatever alias ("latest", a raw source
+    label) the caller passed in, since an alias isn't a stable identifier."""
+    visit_group, resolved_visit_id = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
     oct_arr = visit_group["oct_image"]
     n_bscans = oct_arr.shape[0]
     if not (0 <= bscan_index < n_bscans):
@@ -384,11 +389,14 @@ def get_bscan_array(patient_id, eye, visit_id, bscan_index, zarr_dir=None):
                             f"{n_bscans} bscans (valid: 0-{n_bscans - 1})")
     source_files = oct_arr.attrs.get("bscan_source_files", [])
     source_file = source_files[bscan_index] if bscan_index < len(source_files) else None
-    return np.asarray(oct_arr[bscan_index]), source_file
+    return np.asarray(oct_arr[bscan_index]), source_file, resolved_visit_id
 
 
-def get_oct_volume_array(patient_id, eye, visit_id, start_bscan=None, end_bscan=None, zarr_dir=None) -> np.ndarray:
-    visit_group, _ = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
+def get_oct_volume_array(patient_id, eye, visit_id, start_bscan=None, end_bscan=None, zarr_dir=None):
+    """Returns (np.ndarray, resolved_visit_id: str) -- see get_bscan_array's
+    docstring on why the resolved id, not the input alias, is the one to
+    report as provenance."""
+    visit_group, resolved_visit_id = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
     oct_arr = visit_group["oct_image"]
     n_bscans = oct_arr.shape[0]
     start = 0 if start_bscan is None else start_bscan
@@ -396,12 +404,12 @@ def get_oct_volume_array(patient_id, eye, visit_id, start_bscan=None, end_bscan=
     if not (0 <= start < end <= n_bscans):
         raise OctZarrError(f"Invalid range start_bscan={start_bscan}, end_bscan={end_bscan} "
                             f"for volume with {n_bscans} bscans")
-    return np.asarray(oct_arr[start:end])
+    return np.asarray(oct_arr[start:end]), resolved_visit_id
 
 
 def get_fundus_array(patient_id, eye, visit_id, modality="color", zarr_dir=None):
-    """Returns (np.ndarray, source_filename: str). modality is "color" or "near-IR"."""
-    visit_group, _ = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
+    """Returns (np.ndarray, source_filename: str, resolved_visit_id: str). modality is "color" or "near-IR"."""
+    visit_group, resolved_visit_id = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
     if "fundus" not in visit_group:
         raise OctZarrError(f"No fundus images for this visit.")
     fundus_group = visit_group["fundus"]
@@ -410,28 +418,29 @@ def get_fundus_array(patient_id, eye, visit_id, modality="color", zarr_dir=None)
         raise OctZarrError(f"modality {modality!r} not available for this visit. "
                             f"Available: {available}")
     arr = fundus_group[modality]
-    return np.asarray(arr[:]), arr.attrs.get("source_file")
+    return np.asarray(arr[:]), arr.attrs.get("source_file"), resolved_visit_id
 
 
-def get_clinical(patient_id, eye, visit_id, zarr_dir=None) -> dict | None:
-    """Reads ONLY the clinical group's bcva/cst_um/eye_id. Returns None if this
-    visit has no clinical data (expected for the non-study eye -- every patient
-    has clinical data on exactly one eye, not both)."""
-    visit_group, _ = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
+def get_clinical(patient_id, eye, visit_id, zarr_dir=None):
+    """Reads ONLY the clinical group's bcva/cst_um/eye_id. Returns
+    (None, resolved_visit_id) if this visit has no clinical data (expected
+    for the non-study eye -- every patient has clinical data on exactly one
+    eye, not both), else (dict, resolved_visit_id)."""
+    visit_group, resolved_visit_id = _get_visit_group(patient_id, eye, visit_id, zarr_dir)
     if "clinical" not in visit_group:
-        return None
-    return dict(visit_group["clinical"].attrs)
+        return None, resolved_visit_id
+    return dict(visit_group["clinical"].attrs), resolved_visit_id
 
 
 def compare_visits(patient_id, eye, visit_a, visit_b, zarr_dir=None) -> dict:
-    clinical_a = get_clinical(patient_id, eye, visit_a, zarr_dir)
-    clinical_b = get_clinical(patient_id, eye, visit_b, zarr_dir)
+    clinical_a, resolved_a = get_clinical(patient_id, eye, visit_a, zarr_dir)
+    clinical_b, resolved_b = get_clinical(patient_id, eye, visit_b, zarr_dir)
     if clinical_a is None or clinical_b is None:
         missing = visit_a if clinical_a is None else visit_b
         raise OctZarrError(f"No clinical data for visit {missing!r} on patient {patient_id} eye {eye}.")
     return {
-        "visit_a": visit_a,
-        "visit_b": visit_b,
+        "visit_a": resolved_a,
+        "visit_b": resolved_b,
         "BCVA_a": clinical_a["bcva"],
         "BCVA_b": clinical_b["bcva"],
         "CST_a": clinical_a["cst_um"],

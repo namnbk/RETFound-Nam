@@ -121,7 +121,7 @@ def screen_oct_volume(patient_id: int, eye: str, visit_id: str = "latest", top_k
     """
     try:
         eye_n = oz.normalize_eye(eye)
-        volume = oz.get_oct_volume_array(patient_id, eye_n, visit_id)
+        volume, resolved_visit_id = oz.get_oct_volume_array(patient_id, eye_n, visit_id)
         model, n_classes = _get_model()
         class_names = _class_names()
 
@@ -142,7 +142,7 @@ def screen_oct_volume(patient_id: int, eye: str, visit_id: str = "latest", top_k
         return {
             "patient_id": patient_id,
             "eye": eye_n,
-            "visit_id": visit_id,
+            "visit_id": resolved_visit_id,
             "volume_prediction": volume_prediction,
             "candidate_bscans": candidate_bscans,
         }
@@ -172,7 +172,7 @@ def generate_gradcam(patient_id: int, eye: str, visit_id: str, bscan_index: int,
     """
     try:
         eye_n = oz.normalize_eye(eye)
-        arr, _source_file = oz.get_bscan_array(patient_id, eye_n, visit_id, bscan_index)
+        arr, _source_file, _resolved_visit_id = oz.get_bscan_array(patient_id, eye_n, visit_id, bscan_index)
         model, n_classes = _get_model()
         class_names = _class_names()
         pil_img = Image.fromarray(arr)

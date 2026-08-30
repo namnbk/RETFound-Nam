@@ -31,7 +31,8 @@ def describe_store(patient_id: int, zarr_dir: Path):
                   f"modalities={v['modalities']}, oct_shape={vol_info['shape']}, "
                   f"has_clinical={v['has_clinical']}")
             if v["has_clinical"]:
-                print(f"      clinical: {oz.get_clinical(patient_id, eye, v['visit_id'], zarr_dir)}")
+                clinical, _ = oz.get_clinical(patient_id, eye, v["visit_id"], zarr_dir)
+                print(f"      clinical: {clinical}")
 
 
 def verify_roundtrip(patient_id: int, zarr_dir: Path, source_dir: Path):
@@ -46,7 +47,7 @@ def verify_roundtrip(patient_id: int, zarr_dir: Path, source_dir: Path):
     source_visit = visits[0]["source_visit"]
     eye_dir = source_dir / source_folder / source_visit / eye
 
-    bscan, source_file = oz.get_bscan_array(patient_id, eye, visit_id, 0, zarr_dir)
+    bscan, source_file, _ = oz.get_bscan_array(patient_id, eye, visit_id, 0, zarr_dir)
     original = np.array(Image.open(eye_dir / source_file).convert("L"))
     assert np.array_equal(bscan, original), f"B-scan mismatch for patient {patient_id}"
     print(f"  [OK] patient {patient_id}: bscan 0 matches {source_file} (shape={bscan.shape})")
@@ -54,7 +55,7 @@ def verify_roundtrip(patient_id: int, zarr_dir: Path, source_dir: Path):
     for modality in ("near-IR", "color"):
         if f"fundus_{'near_ir' if modality == 'near-IR' else 'color'}" not in visits[0]["modalities"]:
             continue
-        arr, source_file = oz.get_fundus_array(patient_id, eye, visit_id, modality, zarr_dir)
+        arr, source_file, _ = oz.get_fundus_array(patient_id, eye, visit_id, modality, zarr_dir)
         mode = "L" if modality == "near-IR" else "RGB"
         original = np.array(Image.open(eye_dir / source_file).convert(mode))
         assert np.array_equal(arr, original), f"fundus/{modality} mismatch for patient {patient_id}"
