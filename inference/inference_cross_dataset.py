@@ -45,7 +45,8 @@ import csv
 from collections import Counter
 from pathlib import Path
 
-# Local imports (assumes running from project root)
+# Local imports
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "training"))
 import models_vit as models  # same module used in training
 
 # ---------------------------

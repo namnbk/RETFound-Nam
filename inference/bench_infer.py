@@ -1,14 +1,17 @@
 # filepath: bench_infer.py
 import argparse
 import os
+import sys
 import time
 import warnings
 import csv
+from pathlib import Path
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "training"))
 import models_vit as models
 from util.datasets import build_dataset
 

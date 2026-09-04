@@ -122,10 +122,10 @@ export HF_ENDPOINT=https://hf-mirror.com
 
 
 
-5. Start fine-tuning by running `sh train.sh`.
+5. Start fine-tuning by running `sh training/train.sh`.
 
 
-In `train.sh`, the model can be selected by changing the hyperparameters `MODEL`, `MODEL_ARCH`, `FINETUNE`:
+In `training/train.sh`, the model can be selected by changing the hyperparameters `MODEL`, `MODEL_ARCH`, `FINETUNE`:
 
 **RETFound**:
 
@@ -180,7 +180,7 @@ NUM_CLASS=5
 DATA_PATH="PATH TO THE DATASET"
 TASK="${MODEL_ARCH}_${DATASET}_${ADAPTATION}"
 
-torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
+torchrun --nproc_per_node=1 --master_port=48766 training/main_finetune.py \
   --model "${MODEL}" \
   --model_arch "${MODEL_ARCH}" \
   --finetune "${FINETUNE}" \
@@ -221,7 +221,7 @@ TASK="${MODEL_ARCH}_${DATASET}_${ADAPTATION}"
 CKPT="./output_dir/${TASK}/checkpoint-best.pth"
 
 # ==== Evaluation only ====
-torchrun --nproc_per_node=1 --master_port=48766 main_finetune.py \
+torchrun --nproc_per_node=1 --master_port=48766 training/main_finetune.py \
   --model "${MODEL}" \
   --model_arch "${MODEL_ARCH}" \
   --savemodel \
@@ -245,7 +245,7 @@ To measure single-image inference latency using your fine-tuned checkpoint:
 
 ```
 # Example (Windows single GPU)
-python -u main_finetune.py \
+python -u training/main_finetune.py \
   --model RETFound_dinov2 \
   --model_arch retfound_dinov2 \
   --nb_classes 7 \

@@ -23,7 +23,8 @@ import pandas as pd
 from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(REPO_ROOT / "interpretability"))
+sys.path.insert(0, str(REPO_ROOT / "data"))
 
 import grad_cam_retfound as gc  # noqa: E402
 import oct_zarr as oz  # noqa: E402

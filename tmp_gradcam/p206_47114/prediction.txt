@@ -1,4 +1,0 @@
-Predicted: DME (92.2%)
-Class probabilities:
-  DME: 92.2%
-  DR: 7.8%

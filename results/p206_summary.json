@@ -1,0 +1,205 @@
+{
+  "n_instances": 12,
+  "tasks": [
+    {
+      "task_no": 1,
+      "category": "2. OLIVES retrieval/navigation",
+      "task_name": "Exact B-scan retrieval",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "exact_match",
+      "headline_score": 1.0,
+      "submetrics": {
+        "exact_match": 1.0
+      }
+    },
+    {
+      "task_no": 2,
+      "category": "2. OLIVES retrieval/navigation",
+      "task_name": "Latest-visit retrieval",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "exact_match",
+      "headline_score": 1.0,
+      "submetrics": {
+        "exact_match": 1.0
+      }
+    },
+    {
+      "task_no": 3,
+      "category": "2. OLIVES retrieval/navigation",
+      "task_name": "Longitudinal retrieval",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "correct",
+      "headline_score": 1.0,
+      "submetrics": {
+        "correct": 1.0,
+        "values_correct": 1.0,
+        "visits_correct": 1.0
+      }
+    },
+    {
+      "task_no": 4,
+      "category": "2. OLIVES retrieval/navigation",
+      "task_name": "Find abnormal/evidence-rich slices",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "evidence_precision_at_3",
+      "headline_score": 0.0,
+      "submetrics": {
+        "evidence_precision_at_3": 0.0
+      }
+    },
+    {
+      "task_no": 5,
+      "category": "3. Disease assessment + evidence grounding",
+      "task_name": "DR vs DME assessment",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "disease_correct",
+      "headline_score": 1.0,
+      "submetrics": {
+        "disease_correct": 1.0
+      }
+    },
+    {
+      "task_no": 6,
+      "category": "3. Disease assessment + evidence grounding",
+      "task_name": "Disease + supporting slices",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "joint_pass",
+      "headline_score": 0.0,
+      "submetrics": {
+        "disease_correct": 1.0,
+        "evidence_precision_at_3": 0.333,
+        "joint_pass": 0.0
+      }
+    },
+    {
+      "task_no": 7,
+      "category": "3. Disease assessment + evidence grounding",
+      "task_name": "Disease + saliency evidence",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "joint_pass",
+      "headline_score": 0.0,
+      "submetrics": {
+        "disease_correct": 1.0,
+        "evidence_bscan_positive": 0.0,
+        "gradcam_generated": 1.0,
+        "joint_pass": 0.0
+      }
+    },
+    {
+      "task_no": 8,
+      "category": "3. Disease assessment + evidence grounding",
+      "task_name": "Evidence-first assessment",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "joint_pass",
+      "headline_score": 0.0,
+      "submetrics": {
+        "disease_correct": 1.0,
+        "evidence_precision_at_3": 0.333,
+        "joint_pass": 0.0,
+        "order_ok": 1.0
+      }
+    },
+    {
+      "task_no": 9,
+      "category": "4. Compound workflow",
+      "task_name": "Latest exam -> diagnosis -> evidence",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "strict_workflow_success",
+      "headline_score": 1.0,
+      "submetrics": {
+        "disease_correct": 1.0,
+        "has_valid_evidence": 1.0,
+        "strict_workflow_success": 1.0,
+        "visit_correct": 1.0
+      }
+    },
+    {
+      "task_no": 10,
+      "category": "4. Compound workflow",
+      "task_name": "Longitudinal comparison",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "correct",
+      "headline_score": 1.0,
+      "submetrics": {
+        "bcva_direction_correct": 1.0,
+        "correct": 1.0,
+        "cst_direction_correct": 1.0,
+        "visits_correct": 1.0
+      }
+    },
+    {
+      "task_no": 11,
+      "category": "4. Compound workflow",
+      "task_name": "Evidence verification",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "joint_pass",
+      "headline_score": 0.0,
+      "submetrics": {
+        "disease_correct": 1.0,
+        "evidence_precision_at_3": 0.333,
+        "joint_pass": 0.0,
+        "order_ok": 1.0
+      }
+    },
+    {
+      "task_no": 12,
+      "category": "4. Compound workflow",
+      "task_name": "Uncertain-case evidence escalation",
+      "n_total": 1,
+      "n_scored": 1,
+      "n_malformed_output": 0,
+      "n_harness_error": 0,
+      "headline_metric": "uncertainty_handling_accuracy",
+      "headline_score": 0.0,
+      "submetrics": {
+        "appropriate_tool_use": 0.0,
+        "checked_beyond_topk": 0.0,
+        "correct_abstention": 0.0,
+        "evidence_precision_at_3": 0.333,
+        "gradcam_generated": 1.0,
+        "uncertainty_handling_accuracy": 0.0
+      }
+    }
+  ],
+  "patients": [
+    {
+      "patient_id": "206",
+      "n_instances": 12,
+      "n_malformed_output": 0,
+      "n_harness_error": 0
+    }
+  ]
+}

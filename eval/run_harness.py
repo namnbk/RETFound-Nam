@@ -20,19 +20,39 @@ metadata block plus a real ImageContent block, so they no longer come
 anywhere near the cap. The raised limit is kept for the volume tool and as
 headroom.
 
-Read was tried (allowing "Skill,Read") to let the agent retrieve its own
-persisted large tool outputs, then reverted, and it stays reverted: (1)
-plain Read is NOT confined to the working directory by default -- it
-happily attempted an absolute path outside the repo
-(D:\Nam\Olive_temp_move\...), only failing because that particular file
-exceeded the 256KB single-read cap, not because of any directory boundary
--- a real leak surface if the agent ever learns/guesses where ground truth
-was moved to. (2) --restricted does properly confine file tools to the
-working directory (verified: hard permission_denied on the same absolute
-path), but it also ignores project-level settings entirely, which silently
-drops both project skills (evidence-grounded-oct-assessment,
-retinal-data-operations) from the session -- unusable here since
-skill-guided behavior is what's being benchmarked.
+Read is enabled, but only behind explicit deny rules (DENY_READ globs
+below), because plain Read is NOT confined to the working directory and the
+answer key lives inside it. Both halves of that were re-verified live
+against this CLI (2.1.251), not assumed:
+
+  * Without a deny rule, a bypassPermissions session reads
+    eval/tasks.jsonl -- which carries the hidden `expected`/`grading`
+    fields -- and reads D:\Nam\Olive_temp_move\olives_split\splits.json,
+    an absolute path outside the repo. Both succeeded. So Read alone makes
+    the benchmark self-scoring.
+  * With the deny rules, both reads come back
+    "File is in a directory that is denied by your permission settings"
+    with is_error set. Deny rules DO survive --permission-mode
+    bypassPermissions.
+
+Rule syntax is load-bearing and not obvious: `Read(D:/Nam/...)` (drive
+letter, forward slashes) and `Read(//d/Nam/...)` both match, while
+`Read(//D:/Nam/...)` and a bare `Read(**/Olive_temp_move/**)` silently do
+NOT -- they look identical in the config and simply never fire. If you
+change GROUND_TRUTH_DIR, re-run the deny check rather than trusting the
+pattern by eye.
+
+--restricted would confine file tools to the working directory, but it
+ignores project-level settings entirely and silently drops both project
+skills (evidence-grounded-oct-assessment, retinal-data-operations) from the
+session -- unusable here, since skill-guided behavior is what's being
+benchmarked. Hence deny rules rather than --restricted.
+
+Note the deny rules do not (and cannot) close the source_path channel:
+patients 206/209/211/220/251 have B-scan filenames like
+TREX_DME_000024.tif, which the retinal-data MCP tools return as provenance.
+That leak predates Read being enabled and is served by the tool surface
+itself.
 
 Visual grounding no longer depends on any of that. get_bscan,
 get_fundus_image and generate_gradcam return a metadata TextContent block
@@ -59,6 +79,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MCP_CONFIG = REPO_ROOT / ".mcp.json"
 TIMEOUT_SECONDS = 240
 MAX_BUDGET_USD = "1.00"
+EFFORT = os.environ.get("EVAL_EFFORT", "low")
+
+# Where the evaluator-only OLIVES originals/splits were moved to. Matches
+# build_answer_keys.py's env var so both agree on one location.
+GROUND_TRUTH_DIR = os.environ.get("OLIVES_GROUND_TRUTH_DIR", r"D:\Nam\Olive_temp_move")
+
+# Everything the agent must not read while being scored. See the module
+# docstring on why these are deny rules and why the syntax matters.
+DENY_READ = [
+    "Read(./eval/**)",      # tasks.jsonl's hidden expected/grading fields, answer_keys.json, grade.py
+    "Read(./results/**)",   # other instances' transcripts and their scores
+    f"Read({GROUND_TRUTH_DIR.replace(chr(92), '/')}/**)",  # OLIVES originals, splits, biomarker CSV
+]
 
 
 def run_one(instance: dict, out_dir: Path) -> dict:
@@ -68,8 +101,10 @@ def run_one(instance: dict, out_dir: Path) -> dict:
         "--output-format", "stream-json",
         "--verbose",
         "--json-schema", json.dumps(instance["json_schema"]),
-        "--tools", "Skill",
-        "--allowedTools", "Skill,mcp__retinal-data__*,mcp__retinal-ai__*",
+        "--tools", "Skill,Read",
+        "--allowedTools", "Skill,Read,mcp__retinal-data__*,mcp__retinal-ai__*",
+        "--disallowedTools", *DENY_READ,
+        "--effort", EFFORT,
         "--permission-mode", "bypassPermissions",
         "--strict-mcp-config",
         "--mcp-config", str(MCP_CONFIG),

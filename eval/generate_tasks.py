@@ -32,10 +32,19 @@ def clamp_bscan(visit_entry: dict) -> int:
 
 
 def positive_bscans(visit_entry: dict, top_n: int | None = None) -> list[int]:
+    """Ranks B-scans by biomarker-flag count, descending. With top_n given,
+    this is a top-k-with-ties selection, not a hard truncation: ties at the
+    rank top_n boundary are included in full rather than arbitrarily cut, so
+    the ground truth for "3 strongest evidence slices" doesn't silently pick
+    3 of (e.g.) 7 equally-positive candidates and penalize an agent for
+    picking a different one from the same tied group (see results/*_summary.md
+    discussion -- exact_match precision@3 was 0.0 across the board before this
+    fix even when the agent's picks were objectively equally strong evidence)."""
     items = [(int(idx), v["count"]) for idx, v in visit_entry["biomarkers"].items() if v["positive"]]
     items.sort(key=lambda t: -t[1])
-    if top_n is not None:
-        items = items[:top_n]
+    if top_n is not None and len(items) > top_n:
+        threshold = items[top_n - 1][1]
+        items = [(idx, count) for idx, count in items if count >= threshold]
     return [idx for idx, _ in items]
 
 

@@ -39,7 +39,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
-sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, os.path.join(REPO_ROOT, "interpretability"))
+sys.path.insert(0, os.path.join(REPO_ROOT, "data"))
 
 import torch  # noqa: E402
 from PIL import Image  # noqa: E402
@@ -143,7 +144,7 @@ def classify_bscan_retfound(patient_id: int | None = None, eye: str | None = Non
             if bscan_id is None:
                 bscan_id = bscan_index
             provenance = {"patient_id": patient_id, "eye": eye_n, "visit_id": resolved_visit_id,
-                          "bscan_index": bscan_index, "source_path": source_file}
+                          "bscan_index": bscan_index, **oz.source_path_field(source_file)}
 
         result = gc.classify_image(model, class_names, DEFAULT_DEVICE, pil_img, INPUT_SIZE)
         return {
@@ -255,7 +256,7 @@ def generate_gradcam(patient_id: int, eye: str, visit_id: str, bscan_index: int,
             "patient_id": patient_id,
             "eye": eye_n,
             "visit_id": resolved_visit_id,
-            "source_path": source_file,
+            **oz.source_path_field(source_file),
             "target_class": result["target_class"],
             "model": MODEL_NAME,
             "activation_max": result["activation_max"],

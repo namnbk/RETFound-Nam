@@ -451,6 +451,33 @@ def compare_visits(patient_id, eye, visit_a, visit_b, zarr_dir=None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Provenance disclosure (shared by both MCP servers)
+# ---------------------------------------------------------------------------
+
+# TEMPORARY WITHHOLDING. OLIVES B-scan filenames for patients 206/209/211/220/
+# 251 look like "TREX_DME_000024.tif" -- the diagnosis is spelled out in the
+# filename. Returning that as provenance hands the answer to anything being
+# asked "is this DR or DME", through the tool surface itself, with no file
+# access needed. Until the filenames are sanitized at build time (or the eval
+# stops asking that question), the field is withheld.
+#
+# Set RETINAL_EXPOSE_SOURCE_PATH=1 in the MCP server's environment to restore
+# it -- nothing else needs editing. This is the whole switch.
+EXPOSE_SOURCE_PATH = os.environ.get("RETINAL_EXPOSE_SOURCE_PATH", "0").strip().lower() \
+    not in ("0", "", "false", "no", "off")
+
+
+def source_path_field(source_file) -> dict:
+    """Returns `{"source_path": ...}` when disclosure is enabled, else `{}`.
+
+    Spread this into a tool's metadata dict (`**oz.source_path_field(f)`) so
+    the key is *absent* rather than present-and-null when withheld -- a null
+    still advertises that a filename exists and invites a caller to go hunting
+    for it, which is the opposite of the point."""
+    return {"source_path": source_file} if EXPOSE_SOURCE_PATH else {}
+
+
+# ---------------------------------------------------------------------------
 # Image codec helpers (shared by both MCP servers)
 # ---------------------------------------------------------------------------
 

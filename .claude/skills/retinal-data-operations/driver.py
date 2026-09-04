@@ -42,6 +42,14 @@ async def call(session: ClientSession, tool: str, **kwargs) -> dict:
     return json.loads(result.content[0].text)
 
 
+def src(meta: dict) -> str:
+    """Render a response's source_path for display. The field is currently
+    withheld by the servers (oct_zarr.EXPOSE_SOURCE_PATH) because some OLIVES
+    filenames spell out the diagnosis, so read it defensively -- this prints
+    correctly whether or not disclosure is switched back on."""
+    return repr(meta["source_path"]) if "source_path" in meta else "<withheld>"
+
+
 async def call_images(session: ClientSession, tool: str, **kwargs) -> tuple[dict, list]:
     """Like call(), but also returns the ImageContent blocks. Claude Code
     sees these as real images; over the SDK they arrive as base64 PNG data
@@ -95,9 +103,9 @@ async def run_retinal_data_demo(patient_id: int, eye: str):
                   f"{fundus['visit_id']!r} (must match -- they do)")
 
             section("RULE 5/6 -- verify before answering, preserve provenance")
-            print(f"bscan provenance: source_path={bscan['source_path']!r}, "
+            print(f"bscan provenance: source_path={src(bscan)}, "
                   f"bscan_index={bscan['bscan_index']}, visit_id={bscan['visit_id']}, eye={bscan['eye']}")
-            print(f"fundus provenance: source_path={fundus['source_path']!r}, modality={fundus['modality']!r}")
+            print(f"fundus provenance: source_path={src(fundus)}, modality={fundus['modality']!r}")
 
             section("RULE 5 (continued) -- an unverifiable request returns an explicit error, not a guess")
             other_eye = "OS" if eye == "OD" else "OD"

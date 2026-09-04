@@ -16,6 +16,7 @@ and having access approved on the model page).
 """
 import argparse
 import csv
+import sys
 from pathlib import Path
 
 import torch
@@ -24,6 +25,7 @@ from torchvision import transforms
 from PIL import Image
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "training"))
 import models_vit as models
 from util.pos_embed import interpolate_pos_embed
 

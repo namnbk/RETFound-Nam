@@ -65,6 +65,13 @@ async def call(session: ClientSession, tool: str, **kwargs) -> dict:
     return json.loads(result.content[0].text)
 
 
+def src(meta: dict):
+    """A response's source_path, or None when the servers are withholding it
+    (oct_zarr.EXPOSE_SOURCE_PATH -- some OLIVES filenames spell out the
+    diagnosis). Read defensively so this works either way."""
+    return meta.get("source_path")
+
+
 async def call_images(session: ClientSession, tool: str, **kwargs) -> tuple[dict, list]:
     """Like call(), but also returns the ImageContent blocks -- what Claude
     Code renders as an actual viewable image rather than base64 text."""
@@ -102,7 +109,7 @@ async def scenario_a_routing(data_session: ClientSession):
     print("so the policy calls retinal-data only. Nothing below touches retinal-ai:")
     fundus = await call(data_session, "get_fundus_image", patient_id=60, eye="OD",
                          visit_id="latest", modality="color")
-    print(f"  get_fundus_image -> visit_id={fundus['visit_id']!r}, source_path={fundus['source_path']!r}")
+    print(f"  get_fundus_image -> visit_id={fundus['visit_id']!r}, source_path={src(fundus)!r}")
     print("(compare to Scenario B: same patient, but a diagnostic question DOES require retinal-ai)")
 
 
@@ -158,7 +165,7 @@ async def scenario_b_confident(data_session: ClientSession, ai_session: ClientSe
         prediction={"class": screen["volume_prediction"], "model": "retfound-olives-v1 (DME-vs-DR linear probe)"},
         confidence_label="high (volume/slice agree, wide margin)",
         margin=round(margin, 3),
-        supporting_bscans=[{"index": top_idx, "source_path": top_bscan["source_path"],
+        supporting_bscans=[{"index": top_idx, "source_path": src(top_bscan),
                              "role": "top-ranked by screen_oct_volume, individually cross-checked"}],
         tools_used=["list_patient_examinations", "get_oct_volume_info", "screen_oct_volume",
                     "get_bscan", "classify_bscan_retfound", "generate_gradcam"],
@@ -199,7 +206,7 @@ async def scenario_c_disagreement(data_session: ClientSession, ai_session: Clien
         result = await call(ai_session, "classify_bscan_retfound", patient_id=patient_id, eye=eye,
                              visit_id="latest", bscan_index=idx, bscan_id=idx)
         agree = result["prediction"] == screen["volume_prediction"]
-        checked.append({"index": idx, "source_path": bscan["source_path"],
+        checked.append({"index": idx, "source_path": src(bscan),
                          "prediction": result["prediction"], "agrees_with_volume": agree})
         print(f"  slice {idx}: individual prediction={result['prediction']!r} (agrees: {agree})")
 
@@ -227,7 +234,7 @@ async def scenario_c_disagreement(data_session: ClientSession, ai_session: Clien
                     "caveat": "volume-level majority call only -- not a confident diagnosis"},
         confidence_label="insufficient / conflicting -- do not treat as a diagnosis",
         margin=0.495,
-        supporting_bscans=checked + [{"index": 0, "source_path": bscan0["source_path"],
+        supporting_bscans=checked + [{"index": 0, "source_path": src(bscan0),
                                        "prediction": result0["prediction"],
                                        "agrees_with_volume": result0["prediction"] == screen["volume_prediction"]}],
         tools_used=["list_patient_examinations", "screen_oct_volume", "get_bscan",

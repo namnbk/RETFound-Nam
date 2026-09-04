@@ -85,8 +85,8 @@ OCT bscan and fundus both resolved to visit_id='visit_17' / 'visit_17' (must mat
 ======================================================================
 RULE 5/6 -- verify before answering, preserve provenance
 ======================================================================
-bscan provenance: source_path='24.tif', bscan_index=24, visit_id=visit_17, eye=OD
-fundus provenance: source_path='fundus_W104.tif', modality='color'
+bscan provenance: source_path=<withheld>, bscan_index=24, visit_id=visit_17, eye=OD
+fundus provenance: source_path=<withheld>, modality='color'
 
 ======================================================================
 RULE 5 (continued) -- an unverifiable request returns an explicit error, not a guess
@@ -162,10 +162,11 @@ Concretely, with the actual tools:
    key in a tool result as "this can't be answered as asked," not as data to
    paraphrase around.
 6. **Preserve provenance in your answer.** Every image-returning tool
-   includes `source_path` (the original filename) and the *resolved*
-   `visit_id`/`bscan_index`/`eye`/`patient_id` -- carry these into your
-   response so a human can trace exactly which file, which slice, which
-   visit an answer came from.
+   returns the *resolved* `patient_id`/`eye`/`visit_id`/`bscan_index` --
+   carry that tuple into your response so a human can trace exactly which
+   slice, which visit an answer came from. It is fully reproducible on its
+   own. `source_path` (the original filename) is currently withheld; see
+   Gotchas.
 7. **Diagnostic models are opt-in, not automatic.** `classify_bscan_retfound`,
    `screen_oct_volume`, and `generate_gradcam` live in the separate
    `retinal-ai` server. Calling any `retinal-data` tool never touches them.
@@ -210,6 +211,16 @@ Concretely, with the actual tools:
   `patient_id`/`eye`/`visit_id`/`bscan_index`. Over the SDK the blocks are
   `[c for c in result.content if c.type == "image"]` (see `driver.py`'s
   `call_images()`).
+- **`source_path` is currently WITHHELD from every tool response.** Some
+  OLIVES B-scan filenames spell out the diagnosis -- patients 206, 209, 211,
+  220 and 251 have slices named like `TREX_DME_000024.tif` -- so returning
+  the filename as provenance hands a DR-vs-DME answer straight to the caller
+  through the tool surface, no file access required. The key is *absent*
+  (not null) while withheld; set `RETINAL_EXPOSE_SOURCE_PATH=1` in the MCP
+  servers' environment to restore it. Read it defensively
+  (`meta.get("source_path")`), and cite `patient_id` + `eye` + resolved
+  `visit_id` + `bscan_index` for provenance instead -- that tuple is stable,
+  reproducible, and leaks nothing.
 - **Two files are both literally named `server.py`** (`mcp_servers/retinal_data/server.py`,
   `mcp_servers/retinal_ai/server.py`). Importing both with `sys.path.insert`
   + `import server` in the same Python process returns the *same* cached

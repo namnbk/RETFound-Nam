@@ -24,11 +24,12 @@ Config via environment variables (all optional):
   OCT_ZARR_DIR  default: <repo root>/olives_zarr
 """
 import json
+import os
 import sys
 from pathlib import Path
 
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
-sys.path.insert(0, REPO_ROOT)
+sys.path.insert(0, os.path.join(REPO_ROOT, "data"))
 
 import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
@@ -164,7 +165,7 @@ def get_bscan(patient_id: int, eye: str, visit_id: str, bscan_index: int,
             "patient_id": patient_id,
             "eye": eye_n,
             "visit_id": resolved_visit_id,
-            "source_path": source_file,
+            **oz.source_path_field(source_file),
         }, max_dim)
     except oz.OctZarrError as e:
         return _error_result(str(e))
@@ -234,7 +235,7 @@ def get_fundus_image(patient_id: int, eye: str, visit_id: str, modality: str = "
             "patient_id": patient_id,
             "eye": eye_n,
             "visit_id": resolved_visit_id,
-            "source_path": source_file,
+            **oz.source_path_field(source_file),
         }, max_dim)
     except oz.OctZarrError as e:
         return _error_result(str(e))

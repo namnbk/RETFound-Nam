@@ -22,7 +22,7 @@ else
 fi
 
 # Run single-image latency benchmark on the test set
-$LAUNCH bench_infer.py \
+$LAUNCH inference/bench_infer.py \
   --model "${MODEL}" \
   --model_arch "${MODEL_ARCH}" \
   --global_pool \

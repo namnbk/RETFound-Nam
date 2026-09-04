@@ -23,6 +23,8 @@ optionally also saving them to disk.
 """
 import argparse
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -31,6 +33,7 @@ from PIL import Image
 from torchvision import transforms
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "training"))
 import models_vit as models
 from util.pos_embed import interpolate_pos_embed
 

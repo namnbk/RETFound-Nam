@@ -58,7 +58,7 @@ the decision points -- full JSON answers print at the end of B and C):
 
 ```
 SCENARIO A -- pure data question: retinal-ai is never touched
-  get_fundus_image -> visit_id='visit_17', source_path='fundus_W104.tif'
+  get_fundus_image -> visit_id='visit_17', source_path=None (withheld -- see Gotchas)
 
 SCENARIO B -- diagnostic question, patient 60/OD: sufficient, consistent evidence
   screen_oct_volume -> volume_prediction='DR', top candidates=[{'index': 45, 'DR_probability': 0.985}, ...]
@@ -79,7 +79,7 @@ SCENARIO C -- diagnostic question, patient 206/OD: weak margin + real disagreeme
 
 SCENARIO D -- biomarker question: no validated tool exists to answer it
   generate_gradcam metadata fields: ['activation_max', 'activation_mean', 'bscan_index', 'eye',
-    'image_height', 'image_width', 'model', 'patient_id', 'source_path', 'target_class', 'visit_id']
+    'image_height', 'image_width', 'model', 'patient_id', 'target_class', 'visit_id']
     -- no 'biomarker'/'IRF' field on any tool, on either server
 
 All four scenarios completed against the real retinal-data and retinal-ai MCP servers over
@@ -153,7 +153,7 @@ Concretely, with the actual tools:
    its heatmap as a biomarker (e.g. "this is IRF"), and its response has no
    `biomarker` field (verified live in Scenario D:
    `['activation_max', 'activation_mean', 'bscan_index', 'eye', 'image_height', 'image_width',
-   'model', 'patient_id', 'source_path', 'target_class', 'visit_id']`). This holds just as much
+   'model', 'patient_id', 'target_class', 'visit_id']`). This holds just as much
    now that you can *see* the overlay: looking at a heatmap does not turn it
    into a biomarker prediction, because the model behind it was never
    trained to make one.
@@ -182,7 +182,8 @@ Concretely, with the actual tools:
    silently reporting the volume-level majority as if it were settled.
 10. **A final clinical answer keeps five things separate, never folded
     into one paragraph:** model prediction (with model name, explicitly
-    labeled as a prediction), supporting B-scans (index + source_path +
+    labeled as a prediction), supporting B-scans (index + source_path when
+    disclosed, else index alone +
     why each was selected), confidence/uncertainty (a label plus the
     numbers that justify it), tools used (the actual call sequence, which
     will differ by scenario -- see the table above), and provenance
@@ -236,6 +237,16 @@ Concretely, with the actual tools:
   `CallToolResult` ordered metadata-first, `ImageContent` second so the same
   `json.loads(result.content[0].text)` still works. `structuredContent` is
   `None` either way. See `retinal-data-operations` for the full note.
+- **`source_path` is currently WITHHELD from every tool response.** Some
+  OLIVES B-scan filenames spell out the diagnosis -- patients 206, 209, 211,
+  220 and 251 have slices named like `TREX_DME_000024.tif` -- so returning
+  the filename as provenance hands a DR-vs-DME answer straight to the caller
+  through the tool surface, no file access required. The key is *absent*
+  (not null) while withheld; set `RETINAL_EXPOSE_SOURCE_PATH=1` in the MCP
+  servers' environment to restore it. Read it defensively
+  (`meta.get("source_path")`), and cite `patient_id` + `eye` + resolved
+  `visit_id` + `bscan_index` for provenance instead -- that tuple is stable,
+  reproducible, and leaks nothing.
 - **Grad-CAM's overlay is the model's 224x224 center-cropped view**, not the
   same framing as `get_bscan`'s full-width downscale of that slice. When
   describing *where* saliency sits, describe it against the overlay you were
