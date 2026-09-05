@@ -1,20 +1,29 @@
 """
-MCP server exposing the fine-tuned RETFound OCT classifier and Grad-CAM
-explainer to an LLM coding agent: classify a single B-scan, screen a whole
-OCT volume for the most diagnostically relevant slices in one call (instead
-of the agent making 49 individual classify calls), and generate a Grad-CAM
-saliency map for a specific slice.
+MCP server exposing fine-tuned RETFound OCT classifiers and a Grad-CAM
+explainer to an LLM coding agent: classify a single B-scan for disease
+(DME/DR) or for 6 biomarkers, screen a whole OCT volume for the most
+relevant slices in one call (instead of the agent making 49 individual
+classify calls), and generate a Grad-CAM saliency map for a disease
+prediction on a specific slice.
 
 This server never returns OLIVES ground-truth labels, and generate_gradcam
 never interprets its heatmap as a specific biomarker (e.g. "this is IRF") --
 there is no model here establishing that relationship, only class-logit
 attribution. Supersedes the old gradcam_mcp_server.py.
 
-Note: the only usable trained classifier in this repo is a 2-class DME-vs-DR
-RETFound linear probe (output_dir/retfound_mae_OLIVES_lp/checkpoint-best.pth)
--- there is no "normal" class. A DINO classifier was investigated and is not
-usable (its checkpoints were never saved), so no classify_bscan_dino tool
-exists here.
+Two independent classifiers, two independent tool families:
+  - Disease (DME vs DR): classify_bscan_retfound / screen_oct_volume /
+    generate_gradcam. Single-label (softmax) -- classes are mutually
+    exclusive. The only usable trained classifier here is a 2-class
+    RETFound linear probe (output_dir/retfound_mae_OLIVES_lp/checkpoint-best.pth)
+    -- there is no "normal" class. A DINO classifier was investigated and is
+    not usable (its checkpoints were never saved), so no classify_bscan_dino
+    tool exists here.
+  - Biomarkers (IRHRF, PAVF, FAVF, IRF, DRT/ME, VD): classify_bscan_biomarkers
+    / screen_oct_volume_biomarkers. Multi-label (independent sigmoid per
+    class) -- biomarkers co-occur, unlike DME/DR. No Grad-CAM tool exists for
+    this classifier -- it has no attribution tooling built for it, so these
+    two tools only classify.
 
 Registration:
   Claude Code -- see .mcp.json at the repo root (auto-discovered). Use an
@@ -28,10 +37,12 @@ Registration:
       args = ["<absolute path to this file>"]
 
 Config via environment variables (all optional):
-  RETFOUND_CHECKPOINT   default: output_dir/retfound_mae_OLIVES_lp/checkpoint-best.pth
-  RETFOUND_CLASS_NAMES  default: "DME,DR"
-  RETFOUND_DEVICE       default: cuda if available, else cpu
-  OCT_ZARR_DIR          default: <repo root>/olives_zarr
+  RETFOUND_CHECKPOINT            default: output_dir/retfound_mae_OLIVES_lp/checkpoint-best.pth
+  RETFOUND_CLASS_NAMES           default: "DME,DR"
+  RETFOUND_BIOMARKER_CHECKPOINT  default: output_dir/retfound_mae_OLIVESBiomarkers_finetune/checkpoint-best.pth
+  RETFOUND_BIOMARKER_THRESHOLD   default: 0.5
+  RETFOUND_DEVICE                default: cuda if available, else cpu
+  OCT_ZARR_DIR                   default: <repo root>/olives_zarr
 """
 import json
 import os
@@ -40,6 +51,7 @@ from pathlib import Path
 
 REPO_ROOT = str(Path(__file__).resolve().parents[2])
 sys.path.insert(0, os.path.join(REPO_ROOT, "interpretability"))
+sys.path.insert(0, os.path.join(REPO_ROOT, "inference"))
 sys.path.insert(0, os.path.join(REPO_ROOT, "data"))
 
 import torch  # noqa: E402
@@ -48,15 +60,21 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.types import CallToolResult, ImageContent, TextContent  # noqa: E402
 
 import grad_cam_retfound as gc  # noqa: E402
+import biomarker_classifier as bc  # noqa: E402
 import oct_zarr as oz  # noqa: E402
 
 DEFAULT_CHECKPOINT = os.environ.get(
     "RETFOUND_CHECKPOINT",
     os.path.join(REPO_ROOT, "output_dir", "retfound_mae_OLIVES_lp", "checkpoint-best.pth"))
 DEFAULT_CLASS_NAMES = os.environ.get("RETFOUND_CLASS_NAMES", "DME,DR")
+DEFAULT_BIOMARKER_CHECKPOINT = os.environ.get(
+    "RETFOUND_BIOMARKER_CHECKPOINT",
+    os.path.join(REPO_ROOT, "output_dir", "retfound_mae_OLIVESBiomarkers_finetune", "checkpoint-best.pth"))
+DEFAULT_BIOMARKER_THRESHOLD = float(os.environ.get("RETFOUND_BIOMARKER_THRESHOLD", "0.5"))
 DEFAULT_DEVICE = os.environ.get("RETFOUND_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
 INPUT_SIZE = 224
 MODEL_NAME = "retfound-olives-v1"
+BIOMARKER_MODEL_NAME = "retfound-olives-biomarkers-v1"
 
 mcp = FastMCP("retinal-ai")
 
@@ -74,6 +92,16 @@ def _get_model():
 
 def _class_names():
     return [c.strip() for c in DEFAULT_CLASS_NAMES.split(",")]
+
+
+_biomarker_model_cache = {}
+
+
+def _get_biomarker_model():
+    key = (DEFAULT_BIOMARKER_CHECKPOINT, INPUT_SIZE, DEFAULT_DEVICE)
+    if key not in _biomarker_model_cache:
+        _biomarker_model_cache[key] = bc.load_classifier(DEFAULT_BIOMARKER_CHECKPOINT, INPUT_SIZE, DEFAULT_DEVICE)
+    return _biomarker_model_cache[key]
 
 
 def _image_result(img: Image.Image, metadata: dict) -> CallToolResult:
@@ -210,6 +238,127 @@ def screen_oct_volume(patient_id: int, eye: str, visit_id: str = "latest", top_k
         return {"error": str(e)}
     except Exception as e:
         return {"error": f"screen_oct_volume failed: {e}"}
+
+
+@mcp.tool()
+def classify_bscan_biomarkers(patient_id: int | None = None, eye: str | None = None,
+                               visit_id: str = "latest", bscan_index: int | None = None,
+                               image: str | None = None, bscan_id: int | None = None) -> dict:
+    """Classify a single OCT B-scan for 6 biomarkers with the fine-tuned
+    multi-label RETFound classifier: IRHRF, PAVF, FAVF, IRF, DRT/ME, VD.
+
+    Unlike classify_bscan_retfound's DME-vs-DR prediction, biomarkers are not
+    mutually exclusive -- this returns an independent probability per
+    biomarker (sigmoid, not softmax), plus which ones cross the decision
+    threshold, not a single predicted class.
+
+    Normally identify the slice by patient_id/eye/visit_id/bscan_index and
+    this tool reads it from the Zarr store at full resolution -- do NOT try
+    to forward pixels from get_bscan, which returns a downscaled MCP image
+    block for viewing, not a base64 string to pipe. `image` remains available
+    only for an image that exists nowhere in the store.
+
+    Args:
+        patient_id: Patient identifier. Required unless `image` is given.
+        eye: "OD" or "OS". Required unless `image` is given.
+        visit_id: An exact visit id ("visit_01"), "latest" (default),
+            "first", or a raw source visit label (e.g. "W0", "V1").
+        bscan_index: 0-based index into the volume. Required unless `image`
+            is given.
+        image: Escape hatch -- a base64-encoded PNG to classify directly,
+            for an image that isn't in the Zarr store.
+        bscan_id: Optional index to echo back in the response for
+            bookkeeping (not used for classification itself). Defaults to
+            `bscan_index` on the Zarr path.
+
+    Note: no Grad-CAM/saliency tool exists for this classifier -- it only
+    classifies, unlike the disease classifier's generate_gradcam.
+    """
+    try:
+        model, label_columns = _get_biomarker_model()
+        provenance = {}
+
+        if image is not None:
+            pil_img = oz.base64_png_to_pil(image)
+        else:
+            missing = [n for n, v in (("patient_id", patient_id), ("eye", eye),
+                                       ("bscan_index", bscan_index)) if v is None]
+            if missing:
+                return {"error": f"classify_bscan_biomarkers needs {', '.join(missing)} to locate a "
+                                  f"B-scan (or an `image` to classify directly)."}
+            eye_n = oz.normalize_eye(eye)
+            arr, source_file, resolved_visit_id = oz.get_bscan_array(patient_id, eye_n, visit_id, bscan_index)
+            pil_img = Image.fromarray(arr)
+            if bscan_id is None:
+                bscan_id = bscan_index
+            provenance = {"patient_id": patient_id, "eye": eye_n, "visit_id": resolved_visit_id,
+                          "bscan_index": bscan_index, **oz.source_path_field(source_file)}
+
+        result = bc.classify_image(model, label_columns, DEFAULT_DEVICE, pil_img, INPUT_SIZE,
+                                    threshold=DEFAULT_BIOMARKER_THRESHOLD)
+        return {
+            "model": BIOMARKER_MODEL_NAME,
+            "present": result["present"],
+            "probabilities": result["probabilities"],
+            "bscan_id": bscan_id,
+            **provenance,
+        }
+    except oz.OctZarrError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"classify_bscan_biomarkers failed: {e}"}
+
+
+@mcp.tool()
+def screen_oct_volume_biomarkers(patient_id: int, eye: str, visit_id: str = "latest", top_k: int = 3) -> dict:
+    """Screen an entire OCT volume for all 6 biomarkers in one call: classify
+    every B-scan with a single batched forward pass, then rank each
+    biomarker's slices by its own probability independently. Use this instead
+    of calling classify_bscan_biomarkers 49 times.
+
+    Args:
+        patient_id: Patient identifier.
+        eye: "OD" or "OS".
+        visit_id: An exact visit id ("visit_01"), "latest" (default),
+            "first", or a raw source visit label (e.g. "W0", "V1").
+        top_k: How many top-ranked B-scan indices to return, per biomarker.
+
+    Note: unlike screen_oct_volume's single volume_prediction, biomarkers are
+    independent -- each of the 6 gets its own volume-level probability and
+    its own ranked evidence slices, since more than one (or none) can be
+    present in the same volume.
+    """
+    try:
+        eye_n = oz.normalize_eye(eye)
+        volume, resolved_visit_id = oz.get_oct_volume_array(patient_id, eye_n, visit_id)
+        model, label_columns = _get_biomarker_model()
+
+        pil_images = [Image.fromarray(volume[i]) for i in range(volume.shape[0])]
+        per_slice = bc.classify_batch(model, label_columns, DEFAULT_DEVICE, pil_images, INPUT_SIZE,
+                                       threshold=DEFAULT_BIOMARKER_THRESHOLD)
+
+        biomarkers = {}
+        for name in label_columns:
+            probs = [r["probabilities"][name] for r in per_slice]
+            mean_prob = sum(probs) / len(probs)
+            ranked = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)
+            biomarkers[name] = {
+                "volume_probability": mean_prob,
+                "predicted_present": mean_prob >= DEFAULT_BIOMARKER_THRESHOLD,
+                "candidate_bscans": [{"index": i, "probability": probs[i]} for i in ranked[:top_k]],
+            }
+
+        return {
+            "patient_id": patient_id,
+            "eye": eye_n,
+            "visit_id": resolved_visit_id,
+            "model": BIOMARKER_MODEL_NAME,
+            "biomarkers": biomarkers,
+        }
+    except oz.OctZarrError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"screen_oct_volume_biomarkers failed: {e}"}
 
 
 @mcp.tool()

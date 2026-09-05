@@ -238,7 +238,7 @@ def build_patient_zarr(patient_id: int, patient_dir: Path, clinical_df: pd.DataF
 # Reader side
 # ---------------------------------------------------------------------------
 
-REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_ZARR_DIR = os.environ.get("OCT_ZARR_DIR", os.path.join(REPO_ROOT, "olives_zarr"))
 
 VALID_EYES = ("OD", "OS")
