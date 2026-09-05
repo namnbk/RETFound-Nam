@@ -84,6 +84,9 @@ def train_one_epoch(
 @torch.no_grad()
 def evaluate(data_loader, model, device, args, epoch, mode, num_class, log_writer):
     """Evaluate the model."""
+    if getattr(args, "multilabel", False):
+        return evaluate_multilabel(data_loader, model, device, args, epoch, mode, num_class, log_writer)
+
     criterion = nn.CrossEntropyLoss()
     metric_logger = misc.MetricLogger(delimiter="  ")
     os.makedirs(os.path.join(args.output_dir, args.task), exist_ok=True)
@@ -144,5 +147,89 @@ def evaluate(data_loader, model, device, args, epoch, mode, num_class, log_write
         cm = ConfusionMatrix(actual_vector=true_labels, predict_vector=pred_labels)
         cm.plot(cmap=plt.cm.Blues, number_label=True, normalized=True, plot_lib="matplotlib")
         plt.savefig(os.path.join(args.output_dir, args.task, 'confusion_matrix_test.jpg'), dpi=600, bbox_inches='tight')
-    
+
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, score
+
+
+@torch.no_grad()
+def evaluate_multilabel(data_loader, model, device, args, epoch, mode, num_class, log_writer):
+    """Evaluate a multi-label model: independent sigmoid per class (not softmax),
+    per-label metrics macro-averaged across classes. No confusion matrix -- that's
+    a single-label concept; a per-label average-precision breakdown is written
+    instead on the test pass."""
+    criterion = nn.BCEWithLogitsLoss()
+    metric_logger = misc.MetricLogger(delimiter="  ")
+    os.makedirs(os.path.join(args.output_dir, args.task), exist_ok=True)
+    label_names = [c.strip() for c in args.label_columns.split(",") if c.strip()]
+
+    model.eval()
+    true_all, prob_all = [], []
+
+    for batch in metric_logger.log_every(data_loader, 10, f'{mode}:'):
+        images, target = batch[0].to(device, non_blocking=True), batch[-1].to(device, non_blocking=True)
+
+        with torch.cuda.amp.autocast():
+            output = model(images)
+            loss = criterion(output, target)
+        probs = torch.sigmoid(output)
+
+        metric_logger.update(loss=loss.item())
+        true_all.extend(target.cpu().numpy())
+        prob_all.extend(probs.detach().float().cpu().numpy())
+
+    true_all = np.stack(true_all)
+    prob_all = np.stack(prob_all)
+    pred_all = (prob_all >= 0.5).astype(int)
+
+    exact_match = accuracy_score(true_all, pred_all)  # subset accuracy: all 6 labels correct at once
+    hamming = hamming_loss(true_all, pred_all)
+    f1_macro = f1_score(true_all, pred_all, average='macro', zero_division=0)
+    precision_macro = precision_score(true_all, pred_all, average='macro', zero_division=0)
+    recall_macro = recall_score(true_all, pred_all, average='macro', zero_division=0)
+    ap_macro = average_precision_score(true_all, prob_all, average='macro')
+
+    # A label with only one class present in this split has no defined AUROC -- skip it
+    # rather than let sklearn raise, and average over whatever labels remain.
+    per_label_auc = []
+    for i, name in enumerate(label_names):
+        if len(np.unique(true_all[:, i])) < 2:
+            print(f"  [warn] {name}: only one class present in {mode} split, skipping its AUROC")
+            continue
+        per_label_auc.append(roc_auc_score(true_all[:, i], prob_all[:, i]))
+    roc_auc_macro = float(np.mean(per_label_auc)) if per_label_auc else float('nan')
+
+    score = (f1_macro + roc_auc_macro + ap_macro) / 3 if per_label_auc else (f1_macro + ap_macro) / 2
+
+    if log_writer:
+        for metric_name, value in zip(
+            ['exact_match', 'f1_macro', 'roc_auc_macro', 'hamming', 'precision_macro', 'recall_macro', 'ap_macro', 'score'],
+            [exact_match, f1_macro, roc_auc_macro, hamming, precision_macro, recall_macro, ap_macro, score]):
+            log_writer.add_scalar(f'perf/{metric_name}', value, epoch)
+
+    print(f'val loss: {metric_logger.meters["loss"].global_avg}')
+    print(f'Exact match: {exact_match:.4f}, F1 (macro): {f1_macro:.4f}, ROC AUC (macro): {roc_auc_macro:.4f},\n'
+          f' Hamming Loss: {hamming:.4f}, Precision (macro): {precision_macro:.4f}, Recall (macro): {recall_macro:.4f},\n'
+          f' Average Precision (macro): {ap_macro:.4f}, Score: {score:.4f}')
+
+    metric_logger.synchronize_between_processes()
+
+    results_path = os.path.join(args.output_dir, args.task, f'metrics_{mode}.csv')
+    file_exists = os.path.isfile(results_path)
+    with open(results_path, 'a', newline='', encoding='utf8') as cfa:
+        wf = csv.writer(cfa)
+        if not file_exists:
+            wf.writerow(['val_loss', 'exact_match', 'f1_macro', 'roc_auc_macro', 'hamming',
+                         'precision_macro', 'recall_macro', 'ap_macro'])
+        wf.writerow([metric_logger.meters["loss"].global_avg, exact_match, f1_macro, roc_auc_macro,
+                     hamming, precision_macro, recall_macro, ap_macro])
+
+    if mode == 'test':
+        per_label_ap = average_precision_score(true_all, prob_all, average=None)
+        per_label_path = os.path.join(args.output_dir, args.task, 'metrics_test_per_label.csv')
+        with open(per_label_path, 'w', newline='', encoding='utf8') as cfa:
+            wf = csv.writer(cfa)
+            wf.writerow(['label', 'average_precision', 'support_positive', 'support_total'])
+            for name, ap, support in zip(label_names, per_label_ap, true_all.sum(axis=0)):
+                wf.writerow([name, ap, int(support), len(true_all)])
+
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, score

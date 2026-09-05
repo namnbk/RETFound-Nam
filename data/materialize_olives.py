@@ -7,8 +7,8 @@ util/datasets.py's build_dataset() calls torchvision.datasets.ImageFolder on
 main_finetune.py / train.sh already expect -- no changes needed there.
 
 Basic command (from project root, after running split_olives_dataset.py):
-  python materialize_olives.py --data_path ./olives/disease_classification \
-    --manifest ./olives_split/olives_manifest.csv --out_dir ./olives_imagefolder
+  python data/materialize_olives.py --data_path ./olives/disease_classification \
+    --manifest ./data/olives_split/olives_manifest.csv --out_dir ./olives_imagefolder
 
 Output:
   olives_imagefolder/
@@ -29,7 +29,7 @@ import pyarrow.parquet as pq
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_path", type=str, default="./olives/disease_classification")
-    ap.add_argument("--manifest", type=str, default="./olives_split/olives_manifest.csv")
+    ap.add_argument("--manifest", type=str, default="./data/olives_split/olives_manifest.csv")
     ap.add_argument("--out_dir", type=str, default="./olives_imagefolder")
     args = ap.parse_args()
 

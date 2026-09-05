@@ -13,7 +13,7 @@ Disease Label, Scan) from every shard -- not the image bytes -- so it's fast.
 Basic command (from project root):
   python split_olives_dataset.py --data_path ./olives/disease_classification
 
-Outputs (under --out_dir, default ./olives_split):
+Outputs (under --out_dir, default ./data/olives_split):
   splits.json           patient IDs per split (train/val/test), for reuse
                          across every model you compare
   olives_manifest.csv   one row per B-scan: which shard/row it lives at,
@@ -76,7 +76,7 @@ def split_patients(manifest, val_size=0.10, test_size=0.20, seed=42):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data_path", type=str, default="./olives/disease_classification")
-    ap.add_argument("--out_dir", type=str, default="./olives_split")
+    ap.add_argument("--out_dir", type=str, default="./data/olives_split")
     ap.add_argument("--val_size", type=float, default=0.10)
     ap.add_argument("--test_size", type=float, default=0.20)
     ap.add_argument("--seed", type=int, default=42)

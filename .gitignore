@@ -135,8 +135,10 @@ IDRiD_data
 octdl
 olives
 olives_imagefolder
+olives_biomarker_imagefolder
 olives_zarr
 olives_original
+olives_split
 tmp
 tmp_gradcam/
 results/raw/

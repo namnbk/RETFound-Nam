@@ -14,6 +14,7 @@ import faulthandler
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+from torch.utils.data import Subset
 from torch.utils.tensorboard import SummaryWriter
 from timm.models.layers import trunc_normal_
 from timm.data.mixup import Mixup
@@ -97,6 +98,20 @@ def get_args_parser():
     parser.add_argument("--output_dir", default="./output_dir")
     parser.add_argument("--log_dir", default="./output_logs")
 
+    # ---- Multi-label classification (e.g. biomarkers: not mutually exclusive)
+    parser.add_argument("--multilabel", action="store_true",
+                        help="Independent sigmoid per class instead of single-label softmax. "
+                             "Requires --labels_csv and --label_columns; --data_path is the flat "
+                             "image folder root (<data_path>/<train|val|test>/<filename>).")
+    parser.add_argument("--labels_csv", default="", type=str,
+                        help="CSV with 'filename', 'split', and one 0/1 column per --label_columns entry.")
+    parser.add_argument("--label_columns", default="", type=str,
+                        help="Comma-separated CSV column names to use as multi-label targets "
+                             "(count must match --nb_classes).")
+    parser.add_argument("--pos_weight", default="auto", type=str,
+                        help="BCEWithLogitsLoss pos_weight per label: 'auto' (from the training "
+                             "split's class balance), 'none', or a comma-separated list of floats.")
+
     # >>> NEW: training data efficiency <<<
     parser.add_argument(
         "--dataratio", type=str, default="1.0",
@@ -138,7 +153,7 @@ def get_args_parser():
 # =========================
 # Main
 # =========================
-def main(args, criterion):
+def main(args):
     # ---- Optionally load args from resume (when training)
     if args.resume and not args.eval:
         resume_path = args.resume
@@ -146,6 +161,14 @@ def main(args, criterion):
         print(f"Load checkpoint (args) from: {args.resume}")
         args = checkpoint["args"]
         args.resume = resume_path
+
+    if args.multilabel:
+        label_cols = [c.strip() for c in args.label_columns.split(",") if c.strip()]
+        if not args.labels_csv or not label_cols:
+            raise ValueError("--multilabel requires both --labels_csv and --label_columns.")
+        if len(label_cols) != args.nb_classes:
+            raise ValueError(f"--nb_classes ({args.nb_classes}) must match the number of "
+                              f"--label_columns ({len(label_cols)}: {label_cols}).")
 
     # ---- Distributed setup
     misc.init_distributed_mode(args)
@@ -231,6 +254,24 @@ def main(args, criterion):
     dataset_val   = build_dataset(is_train="val",   args=args)
     dataset_test  = build_dataset(is_train="test",  args=args)
 
+    # ---- Loss
+    if args.multilabel:
+        if args.pos_weight == "none":
+            pos_weight = None
+        elif args.pos_weight == "auto":
+            base_ds = dataset_train.dataset if isinstance(dataset_train, Subset) else dataset_train
+            labels = base_ds.labels[dataset_train.indices] if isinstance(dataset_train, Subset) else base_ds.labels
+            pos_count = labels.sum(axis=0)
+            neg_count = labels.shape[0] - pos_count
+            pos_weight = torch.tensor(neg_count / np.clip(pos_count, 1, None), dtype=torch.float32)
+            print(f"[multilabel] auto pos_weight per label: {pos_weight.tolist()}")
+        else:
+            pos_weight = torch.tensor([float(x) for x in args.pos_weight.split(",")], dtype=torch.float32)
+        criterion = torch.nn.BCEWithLogitsLoss(
+            pos_weight=pos_weight.to(device) if pos_weight is not None else None)
+    else:
+        criterion = torch.nn.CrossEntropyLoss()
+
     num_tasks   = misc.get_world_size()
     global_rank = misc.get_rank()
 
@@ -288,6 +329,10 @@ def main(args, criterion):
     # ---- Mixup/CutMix
     mixup_fn = None
     mixup_active = (args.mixup > 0) or (args.cutmix > 0.) or (args.cutmix_minmax is not None)
+    if mixup_active and args.multilabel:
+        print("Mixup/CutMix requested but disabled: not supported with --multilabel "
+              "(timm's Mixup builds single-label one-hot targets).")
+        mixup_active = False
     if mixup_active:
         print("Mixup is activated!")
         mixup_fn = Mixup(
@@ -440,9 +485,7 @@ if __name__ == "__main__":
     args = get_args_parser()
     args = args.parse_args()
 
-    criterion = torch.nn.CrossEntropyLoss()
-
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    main(args, criterion)
+    main(args)
