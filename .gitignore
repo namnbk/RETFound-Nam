@@ -133,5 +133,9 @@ dmypy.json
 
 IDRiD_data
 octdl
+olives
+olives_imagefolder
+tmp
+tmp_gradcam/
 
 output_dir/**/*.pth

@@ -142,7 +142,7 @@ def main(args, criterion):
     # ---- Optionally load args from resume (when training)
     if args.resume and not args.eval:
         resume_path = args.resume
-        checkpoint = torch.load(args.resume, map_location="cpu")
+        checkpoint = torch.load(args.resume, map_location="cpu", weights_only=False)
         print(f"Load checkpoint (args) from: {args.resume}")
         args = checkpoint["args"]
         args.resume = resume_path
@@ -194,7 +194,7 @@ def main(args, criterion):
                 f"Expected one of: Dinov3, Dinov2, RETFound_dinov2, RETFound_mae"
             )
 
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
         print(f"Loaded pre-trained checkpoint from: {checkpoint_path}")
 
         if args.model in ["Dinov3", "Dinov2"]:
@@ -298,7 +298,7 @@ def main(args, criterion):
 
     # ---- Eval-only: resume weights
     if args.resume and args.eval:
-        checkpoint = torch.load(args.resume, map_location="cpu")
+        checkpoint = torch.load(args.resume, map_location="cpu", weights_only=False)
         print(f"Load checkpoint for eval from: {args.resume}")
         model.load_state_dict(checkpoint["model"])
 
@@ -422,7 +422,7 @@ def main(args, criterion):
     # Final Test (Best Ckpt)
     # =========================
     ckpt_path = os.path.join(args.output_dir, args.task, "checkpoint-best.pth")
-    checkpoint = torch.load(ckpt_path, map_location="cpu")
+    checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     model_without_ddp.load_state_dict(checkpoint["model"], strict=False)
     model.to(device)
     print(f"Test with the best model, epoch = {checkpoint.get('epoch', -1)}:")
