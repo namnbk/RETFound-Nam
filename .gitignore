@@ -139,3 +139,5 @@ tmp
 tmp_gradcam/
 
 output_dir/**/*.pth
+# Datasets
+OCT2017
