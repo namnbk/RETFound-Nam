@@ -1,0 +1,2 @@
+val_loss,accuracy,f1,roc_auc,hamming,jaccard,precision,recall,average_precision,kappa
+0.0010308354026002625,1.0,1.0,1.0,0.0,1.0,1.0,1.0,1.0,1.0

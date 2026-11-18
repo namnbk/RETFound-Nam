@@ -1,0 +1,95 @@
+{
+  "run_name": "retfound_dinov2_oct2017_2cls_lp__on__octdl_all",
+  "train_task": "retfound_dinov2_oct2017_2cls_lp",
+  "adaptation": "lp",
+  "train_data": "OCT2017",
+  "checkpoint": "output_dir/retfound_dinov2_oct2017_2cls_lp/checkpoint-best.pth",
+  "checkpoint_epoch": 18,
+  "test_data": "octdl",
+  "test_splits": [
+    "train",
+    "val",
+    "test"
+  ],
+  "test_name": "octdl_all",
+  "input_size": 224,
+  "n_images": 479,
+  "n_dme": 147,
+  "n_normal": 332,
+  "positive_class": "DME",
+  "threshold": 0.5,
+  "loss": 0.20970121026039124,
+  "metrics": {
+    "accuracy": 0.906054279749478,
+    "balanced_accuracy": 0.858310794197197,
+    "auc_roc": 0.9763339070567986,
+    "average_precision": 0.957118595385889,
+    "sensitivity": 0.7346938775510204,
+    "specificity": 0.9819277108433735,
+    "ppv_precision": 0.9473684210526315,
+    "npv": 0.8931506849315068,
+    "f1": 0.8275862068965517,
+    "kappa": 0.764433952985148,
+    "mcc": 0.7761018855834517
+  },
+  "ci95_bootstrap": {
+    "accuracy": [
+      0.8789144050104384,
+      0.9311064718162839
+    ],
+    "balanced_accuracy": [
+      0.822264985014985,
+      0.8940151691842168
+    ],
+    "auc_roc": [
+      0.9653918400251651,
+      0.9867197462112619
+    ],
+    "average_precision": [
+      0.9365080841569525,
+      0.9754854096991408
+    ],
+    "sensitivity": [
+      0.6617647058823529,
+      0.8043478260869565
+    ],
+    "specificity": [
+      0.9676470588235294,
+      0.9941720116618076
+    ],
+    "ppv_precision": [
+      0.9062433226495726,
+      0.983739837398374
+    ],
+    "npv": [
+      0.8613277777777777,
+      0.9230823863636364
+    ],
+    "f1": [
+      0.7760962628716881,
+      0.8754455113140402
+    ],
+    "kappa": [
+      0.7004936283895895,
+      0.8283543639615453
+    ],
+    "mcc": [
+      0.7174666392802035,
+      0.8343501632384352
+    ]
+  },
+  "n_boot": 1000,
+  "confusion_matrix": {
+    "order": "rows=true [DME, NORMAL], cols=pred [DME, NORMAL]",
+    "matrix": [
+      [
+        108,
+        39
+      ],
+      [
+        6,
+        326
+      ]
+    ]
+  }
+}

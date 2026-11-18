@@ -1,0 +1,93 @@
+{
+  "run_name": "retfound_dinov2_octdl_2cls_lp__on__octdl_test",
+  "train_task": "retfound_dinov2_octdl_2cls_lp",
+  "adaptation": "lp",
+  "train_data": "octdl",
+  "checkpoint": "output_dir/retfound_dinov2_octdl_2cls_lp/checkpoint-best.pth",
+  "checkpoint_epoch": 29,
+  "test_data": "octdl",
+  "test_splits": [
+    "test"
+  ],
+  "test_name": "octdl_test",
+  "input_size": 224,
+  "n_images": 49,
+  "n_dme": 15,
+  "n_normal": 34,
+  "positive_class": "DME",
+  "threshold": 0.5,
+  "loss": 0.2066129744052887,
+  "metrics": {
+    "accuracy": 0.9183673469387755,
+    "balanced_accuracy": 0.903921568627451,
+    "auc_roc": 0.9764705882352942,
+    "average_precision": 0.963235294117647,
+    "sensitivity": 0.8666666666666667,
+    "specificity": 0.9411764705882353,
+    "ppv_precision": 0.8666666666666667,
+    "npv": 0.9411764705882353,
+    "f1": 0.8666666666666667,
+    "kappa": 0.807843137254902,
+    "mcc": 0.807843137254902
+  },
+  "ci95_bootstrap": {
+    "accuracy": [
+      0.8367346938775511,
+      0.9795918367346939
+    ],
+    "balanced_accuracy": [
+      0.7969607843137255,
+      0.9864864864864865
+    ],
+    "auc_roc": [
+      0.9281871887510986,
+      1.0
+    ],
+    "average_precision": [
+      0.8803535067873303,
+      1.0
+    ],
+    "sensitivity": [
+      0.6666666666666666,
+      1.0
+    ],
+    "specificity": [
+      0.8484848484848485,
+      1.0
+    ],
+    "ppv_precision": [
+      0.6666666666666666,
+      1.0
+    ],
+    "npv": [
+      0.8499621212121212,
+      1.0
+    ],
+    "f1": [
+      0.709582542694497,
+      0.9714285714285714
+    ],
+    "kappa": [
+      0.5888963700696604,
+      0.9555757026291931
+    ],
+    "mcc": [
+      0.5977307812768111,
+      0.9565200236040831
+    ]
+  },
+  "n_boot": 1000,
+  "confusion_matrix": {
+    "order": "rows=true [DME, NORMAL], cols=pred [DME, NORMAL]",
+    "matrix": [
+      [
+        13,
+        2
+      ],
+      [
+        2,
+        32
+      ]
+    ]
+  }
+}

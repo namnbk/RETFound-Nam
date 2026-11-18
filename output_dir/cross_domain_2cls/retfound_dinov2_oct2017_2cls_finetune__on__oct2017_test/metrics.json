@@ -1,0 +1,93 @@
+{
+  "run_name": "retfound_dinov2_oct2017_2cls_finetune__on__oct2017_test",
+  "train_task": "retfound_dinov2_oct2017_2cls_finetune",
+  "adaptation": "finetune",
+  "train_data": "OCT2017",
+  "checkpoint": "output_dir/retfound_dinov2_oct2017_2cls_finetune/checkpoint-best.pth",
+  "checkpoint_epoch": 22,
+  "test_data": "OCT2017",
+  "test_splits": [
+    "test"
+  ],
+  "test_name": "oct2017_test",
+  "input_size": 224,
+  "n_images": 500,
+  "n_dme": 250,
+  "n_normal": 250,
+  "positive_class": "DME",
+  "threshold": 0.5,
+  "loss": 0.001031411113217473,
+  "metrics": {
+    "accuracy": 1.0,
+    "balanced_accuracy": 1.0,
+    "auc_roc": 1.0,
+    "average_precision": 1.0,
+    "sensitivity": 1.0,
+    "specificity": 1.0,
+    "ppv_precision": 1.0,
+    "npv": 1.0,
+    "f1": 1.0,
+    "kappa": 1.0,
+    "mcc": 1.0
+  },
+  "ci95_bootstrap": {
+    "accuracy": [
+      1.0,
+      1.0
+    ],
+    "balanced_accuracy": [
+      1.0,
+      1.0
+    ],
+    "auc_roc": [
+      0.9999999999999999,
+      1.0
+    ],
+    "average_precision": [
+      1.0,
+      1.0
+    ],
+    "sensitivity": [
+      1.0,
+      1.0
+    ],
+    "specificity": [
+      1.0,
+      1.0
+    ],
+    "ppv_precision": [
+      1.0,
+      1.0
+    ],
+    "npv": [
+      1.0,
+      1.0
+    ],
+    "f1": [
+      1.0,
+      1.0
+    ],
+    "kappa": [
+      1.0,
+      1.0
+    ],
+    "mcc": [
+      1.0,
+      1.0
+    ]
+  },
+  "n_boot": 1000,
+  "confusion_matrix": {
+    "order": "rows=true [DME, NORMAL], cols=pred [DME, NORMAL]",
+    "matrix": [
+      [
+        250,
+        0
+      ],
+      [
+        0,
+        250
+      ]
+    ]
+  }
+}
